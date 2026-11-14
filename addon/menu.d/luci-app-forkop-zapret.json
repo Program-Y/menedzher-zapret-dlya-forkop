@@ -1,0 +1,10 @@
+{
+	"admin/services/forkop-zapret": {
+		"title": "Forkop + Zapret",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "forkop-zapret/main"
+		}
+	}
+}

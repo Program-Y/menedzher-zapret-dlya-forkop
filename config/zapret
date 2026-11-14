@@ -1,0 +1,85 @@
+
+config main 'config'
+	option run_on_boot '1'
+	option FWTYPE 'nftables'
+	option POSTNAT '1'
+	option FLOWOFFLOAD 'none'
+	option INIT_APPLY_FW '1'
+	option DISABLE_IPV4 '0'
+	option DISABLE_IPV6 '1'
+	option FILTER_TTL_EXPIRED_ICMP '1'
+	option MODE_FILTER 'hostlist'
+	option DISABLE_CUSTOM '1'
+	option WS_USER 'daemon'
+	option DAEMON_LOG_ENABLE '0'
+	option DAEMON_LOG_SIZE_MAX '2000'
+	option DAEMON_LOG_FILE '/tmp/zapret+<DAEMON_NAME>+<DAEMON_IDNUM>+<DAEMON_CFGNAME>.log'
+	option AUTOHOSTLIST_RETRANS_THRESHOLD '3'
+	option AUTOHOSTLIST_FAIL_THRESHOLD '3'
+	option AUTOHOSTLIST_FAIL_TIME '60'
+	option AUTOHOSTLIST_DEBUGLOG '0'
+	option NFQWS_ENABLE '1'
+	option DESYNC_MARK '0x40000000'
+	option DESYNC_MARK_POSTNAT '0x20000000'
+	option FILTER_MARK '	'
+	option NFQWS_PORTS_TCP '80,443,2053,2083,2087,2096,8443,2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442'
+	option NFQWS_PORTS_UDP '443,19294-19344,50000-50100,88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535'
+	option NFQWS_TCP_PKT_OUT '9'
+	option NFQWS_TCP_PKT_IN '3'
+	option NFQWS_UDP_PKT_OUT '9'
+	option NFQWS_UDP_PKT_IN '0'
+	option NFQWS_PORTS_TCP_KEEPALIVE '0'
+	option NFQWS_PORTS_UDP_KEEPALIVE '0'
+
+	option NFQWS_OPT '
+#Custom_UserStrategy
+--filter-udp=19294-19344,50000-50100
+--filter-l7=discord,stun
+--dpi-desync=fake
+--dpi-desync-fake-discord=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin
+--dpi-desync-fake-stun=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin
+--dpi-desync-repeats=6
+--new
+--filter-tcp=2053,2083,2087,2096,8443
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=681
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=md5sig
+--dpi-desync-repeats=8
+--dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
+--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
+--new
+--filter-tcp=443
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=681
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=md5sig
+--dpi-desync-repeats=8
+--dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
+--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
+--new
+--filter-tcp=80,443
+--dpi-desync=fake,multisplit
+--dpi-desync-split-seqovl=664
+--dpi-desync-split-pos=1
+--dpi-desync-fooling=md5sig
+--dpi-desync-repeats=8
+--dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin
+--dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin
+--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin
+--dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin
+--new
+--filter-udp=88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535
+--dpi-desync=fake
+--dpi-desync-cutoff=d2
+--dpi-desync-any-protocol=1
+--dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin
+--new
+--filter-tcp=2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442
+--dpi-desync-any-protocol=1
+--dpi-desync-cutoff=n5
+--dpi-desync=multisplit
+--dpi-desync-split-seqovl=582
+--dpi-desync-split-pos=1
+--dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin
+'

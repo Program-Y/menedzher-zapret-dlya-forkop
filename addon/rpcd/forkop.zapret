@@ -1,0 +1,417 @@
+#!/bin/sh
+# Файл: /usr/libexec/rpcd/forkop.zapret
+
+PARSER="/usr/libexec/forkop-zapret/parser.sh"
+RUNNER="/usr/libexec/forkop-zapret/runner.sh"
+CHECK="/usr/libexec/forkop-zapret/check.sh"
+LOG_FILE="/tmp/forkop_zapret/live.log"
+RES_FILE="/tmp/forkop_zapret/results.txt"
+CONF_FILE="/etc/forkop_zapret.conf"
+
+json_val() {
+    local json="$1" key="$2"
+    echo "$json" | sed -n -E "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p"
+}
+
+jesc() { printf '%s' "$1" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+section_slug() {
+    echo "$1" | tr ',' '_' | tr -c 'a-zA-Z0-9_' '_' | sed 's/^_*//; s/_*$//'
+}
+
+# Создаем дефолтный конфиг, если его нет
+if [ ! -s "$CONF_FILE" ]; then
+    echo 'SECTIONS=""' > "$CONF_FILE"
+    echo 'STRAT_CATS="general,faketls,youtube,discord,gv"' >> "$CONF_FILE"
+    echo 'ALL_COMBOS="0"' >> "$CONF_FILE"
+    echo 'AUTO_APPLY="1"' >> "$CONF_FILE"
+    echo 'CRON_SCHEDULE="off"' >> "$CONF_FILE"
+    echo 'DNS_PROTO="doh"' >> "$CONF_FILE"
+    echo 'DNS_SERVER="1.1.1.1"' >> "$CONF_FILE"
+    echo 'VPN_SECTION="none"' >> "$CONF_FILE"
+    echo 'ONLY_STRAT_UPDATE="1"' >> "$CONF_FILE"
+    echo 'DISABLE_UPDATES="0"' >> "$CONF_FILE"
+    echo 'INCLUDE_ZM_DOMAINS="1"' >> "$CONF_FILE"
+    echo 'BEST_STRATEGY=""' >> "$CONF_FILE"
+    echo 'BUILDER_STATE=""' >> "$CONF_FILE"
+fi
+
+# Периодическое задание (legacy, глобальное)
+apply_cron_schedule() {
+    local sched="$1" secs="$2" auto="$3"
+    local expr=""
+    case "$sched" in
+        4h)      expr="0 */4 * * *" ;;
+        6h)      expr="0 */6 * * *" ;;
+        12h)     expr="0 */12 * * *" ;;
+        daily3)  expr="0 3 * * *" ;;
+        daily5)  expr="0 5 * * *" ;;
+    esac
+    sed -i '/forkop_zapret_gsched/d' /etc/crontabs/root
+    if [ -n "$expr" ]; then
+        echo "$expr /bin/sh $RUNNER --run '$secs' '$auto' 1 # forkop_zapret_gsched" >> /etc/crontabs/root
+    fi
+    /etc/init.d/cron restart
+}
+
+# Периодическое задание для конкретной секции
+apply_section_cron() {
+    local sec="$1"
+    local slug=$(section_slug "$sec")
+    local sched=$(uci -q get "forkop_zapret.cfg_${slug}.cron_schedule" 2>/dev/null)
+    local auto=$(uci -q get "forkop_zapret.cfg_${slug}.auto_apply" 2>/dev/null)
+    local expr=""
+    case "$sched" in
+        4h)      expr="0 */4 * * *" ;;
+        6h)      expr="0 */6 * * *" ;;
+        12h)     expr="0 */12 * * *" ;;
+        daily3)  expr="0 3 * * *" ;;
+        daily5)  expr="0 5 * * *" ;;
+    esac
+    sed -i "/forkop_zapret_sched_${slug}/d" /etc/crontabs/root
+    if [ -n "$expr" ]; then
+        echo "$expr /bin/sh $RUNNER --run '$sec' '${auto:-1}' 1 # forkop_zapret_sched_${slug}" >> /etc/crontabs/root
+    fi
+    /etc/init.d/cron restart
+}
+
+# Текущая стратегия секции: сначала sec_<...>.best_body, затем сам forkop
+section_strategy_body() {
+    local sec="$1"
+    local body=""
+    local _st _sn
+    for _st in $(uci -q show forkop_zapret 2>/dev/null | sed -n 's/^forkop_zapret\.\([^.]*\)=section_strategy$/\1/p'); do
+        _sn=$(uci -q get "forkop_zapret.${_st}.section_name" 2>/dev/null)
+        if [ "$_sn" = "$sec" ]; then
+            body=$(uci -q get "forkop_zapret.${_st}.best_body" 2>/dev/null)
+            break
+        fi
+    done
+    [ -z "$body" ] && body=$(uci -q get "forkop.${sec}.nfqws_opt" 2>/dev/null)
+    [ -z "$body" ] && body=$(uci -q get "forkop.${sec}.zapret_strategy" 2>/dev/null)
+    echo "$body"
+}
+
+# Немедленно применить стратегию источника в приёмник (в фоне через runner)
+apply_follow_now() {
+    local target="$1" source="$2"
+    local body=$(section_strategy_body "$source")
+    [ -z "$body" ] && return 0
+    setsid /bin/sh "$RUNNER" --apply-custom "$target" "Follow_${source}" "$body" </dev/null >/dev/null 2>&1 &
+}
+
+# JSON одного блока настроек секции (с дефолтами)
+build_section_json() {
+    local sec="$1"
+    local slug=$(section_slug "$sec")
+    local en=$(uci -q get "forkop_zapret.cfg_${slug}.enabled" 2>/dev/null);           [ -z "$en" ] && en=1
+    local sc=$(uci -q get "forkop_zapret.cfg_${slug}.strat_cats" 2>/dev/null);        [ -z "$sc" ] && sc="general,faketls,youtube,discord,gv"
+    local ac=$(uci -q get "forkop_zapret.cfg_${slug}.all_combos" 2>/dev/null);        [ -z "$ac" ] && ac=0
+    local aa=$(uci -q get "forkop_zapret.cfg_${slug}.auto_apply" 2>/dev/null);        [ -z "$aa" ] && aa=1
+    local cs=$(uci -q get "forkop_zapret.cfg_${slug}.cron_schedule" 2>/dev/null);     [ -z "$cs" ] && cs=off
+    local dp=$(uci -q get "forkop_zapret.cfg_${slug}.dns_proto" 2>/dev/null);         [ -z "$dp" ] && dp=doh
+    local ds=$(uci -q get "forkop_zapret.cfg_${slug}.dns_server" 2>/dev/null);        [ -z "$ds" ] && ds=8.8.8.8
+    local vs=$(uci -q get "forkop_zapret.cfg_${slug}.vpn_section" 2>/dev/null);       [ -z "$vs" ] && vs=none
+    local os=$(uci -q get "forkop_zapret.cfg_${slug}.only_strat_update" 2>/dev/null); [ -z "$os" ] && os=1
+    local du=$(uci -q get "forkop_zapret.cfg_${slug}.disable_updates" 2>/dev/null);   [ -z "$du" ] && du=0
+    local iz=$(uci -q get "forkop_zapret.cfg_${slug}.include_zm_domains" 2>/dev/null);[ -z "$iz" ] && iz=0
+    local cstr=$(jesc "$(uci -q get "forkop_zapret.cfg_${slug}.custom_strategy" 2>/dev/null)")
+    local fe=$(uci -q get "forkop_zapret.cfg_${slug}.follow_enabled" 2>/dev/null);    [ -z "$fe" ] && fe=0
+    local ff=$(jesc "$(uci -q get "forkop_zapret.cfg_${slug}.follow_from" 2>/dev/null)")
+    local dsv=$(uci -q get "forkop_zapret.cfg_${slug}.dns_server" 2>/dev/null)
+    [ -z "$dsv" ] && dsv="${dp}|${ds}"
+    dsv=$(echo "$dsv" | tr ' ' ';')
+    dsv=$(jesc "$dsv")
+    printf '{"enabled":"%s","strat_cats":"%s","all_combos":"%s","auto_apply":"%s","cron_schedule":"%s","dns_proto":"%s","dns_server":"%s","dns_servers":"%s","vpn_section":"%s","only_strat_update":"%s","disable_updates":"%s","include_zm_domains":"%s","custom_strategy":"%s","follow_enabled":"%s","follow_from":"%s"}' \
+        "$en" "$sc" "$ac" "$aa" "$cs" "$dp" "$ds" "$dsv" "$vs" "$os" "$du" "$iz" "$cstr" "$fe" "$ff"
+}
+
+case "$1" in
+    list)
+        echo '{
+            "get_state": {},
+            "get_log": { "offset": 0 },
+            "save_settings": {
+                "sections": "str", "strat_cats": "str", "all_combos": "str",
+                "auto_apply": "str", "cron_schedule": "str", "dns_proto": "str",
+                "dns_server": "str", "vpn_section": "str", "only_strat_update": "str",
+                "disable_updates": "str", "include_zm_domains": "str",
+                "custom_strategy": "str"
+            },
+            "save_section_settings": {
+                "section": "str", "enabled": "str", "strat_cats": "str", "all_combos": "str",
+                "auto_apply": "str", "cron_schedule": "str", "dns_proto": "str", "dns_server": "str",
+                "vpn_section": "str", "only_strat_update": "str", "disable_updates": "str",
+                "include_zm_domains": "str", "custom_strategy": "str", "follow_enabled": "str", "follow_from": "str",
+                "dns_servers": "str"
+            },
+            "start_test": {
+                "section": "str", "sections": "str", "strat_cats": "str", "all_combos": "str",
+                "auto_apply": "str", "include_zm_domains": "str"
+            },
+            "stop_test": {},
+            "check_block": { "sections": "str", "domain": "str" },
+            "check_forkop": { "sections": "str", "domain": "str" },
+            "get_check_log": { "offset": 0 },
+            "stop_check": {},
+            "apply_custom": {
+                "sections": "str", "name": "str", "strategy": "str", "builder_state": "str"
+            }
+        }'
+        ;;
+    call)
+        case "$2" in
+            get_state)
+                . "$CONF_FILE" 2>/dev/null
+
+                [ -z "$CUSTOM_STRATEGY" ] && CUSTOM_STRATEGY=$(uci -q get forkop_zapret.settings.custom_strategy 2>/dev/null)
+                CUSTOM_STRATEGY_ESC=$(printf '%s' "${CUSTOM_STRATEGY:-}" | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+                secs_raw=$(/bin/sh "$PARSER" --list-sections 2>/dev/null)
+                secs_arr=$(echo "$secs_raw" | sed -n 's/.*"sections":\(\[.*\]\).*/\1/p')
+                [ -z "$secs_arr" ] && secs_arr="[]"
+
+                sec_strat=""
+                for _sst in $(uci -q show forkop_zapret 2>/dev/null | sed -n 's/^forkop_zapret\.\([^.]*\)=section_strategy$/\1/p'); do
+                    _sn=$(uci -q get "forkop_zapret.${_sst}.section_name" 2>/dev/null | tr -d '\r\n')
+                    [ -z "$_sn" ] && continue
+                    _bn=$(uci -q get "forkop_zapret.${_sst}.best_strategy" 2>/dev/null | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')
+                    _bb=$(uci -q get "forkop_zapret.${_sst}.best_body" 2>/dev/null | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')
+                    sec_strat="${sec_strat:+$sec_strat,}\"${_sn}\":{\"best_strategy\":\"${_bn}\",\"best_body\":\"${_bb}\"}"
+                done
+                if [ -n "$sec_strat" ]; then sec_strat="{${sec_strat}}"; else sec_strat="{}"; fi
+
+                ss=""
+                for _sec in $(uci -q show forkop 2>/dev/null | sed -n 's/^forkop\.\([^.]*\)=section$/\1/p'); do
+                    ss="${ss:+$ss,}\"${_sec}\":$(build_section_json "$_sec")"
+                done
+                if [ -n "$ss" ]; then ss="{${ss}}"; else ss="{}"; fi
+
+                running="false"
+                if [ -f "/tmp/forkop_zapret/runner.lock" ] && kill -0 "$(cat "/tmp/forkop_zapret/runner.lock" 2>/dev/null)" 2>/dev/null; then
+                    running="true"
+                fi
+
+                printf '{"running":%s,"saved_sections":"%s","strat_cats":"%s","all_combos":"%s","auto_apply":"%s","cron_schedule":"%s","dns_proto":"%s","dns_server":"%s","vpn_section":"%s","only_strat_update":"%s","disable_updates":"%s","include_zm_domains":"%s","custom_strategy":"%s","best_strategy":"%s","builder_state":"%s","section_strategies":%s,"section_settings":%s,"sections":%s}\n' \
+                    "$running" \
+                    "${SECTIONS:-}" \
+                    "${STRAT_CATS:-general,faketls,youtube,discord,gv}" \
+                    "${ALL_COMBOS:-0}" \
+                    "${AUTO_APPLY:-1}" \
+                    "${CRON_SCHEDULE:-off}" \
+                    "${DNS_PROTO:-doh}" \
+                    "${DNS_SERVER:-1.1.1.1}" \
+                    "${VPN_SECTION:-none}" \
+                    "${ONLY_STRAT_UPDATE:-1}" \
+                    "${DISABLE_UPDATES:-0}" \
+                    "${INCLUDE_ZM_DOMAINS:-1}" \
+                    "$CUSTOM_STRATEGY_ESC" \
+                    "${BEST_STRATEGY:-}" \
+                    "${BUILDER_STATE:-}" \
+                    "$sec_strat" \
+                    "$ss" \
+                    "$secs_arr"
+                ;;
+            get_log)
+                read -r input
+                offset=0
+                case "$input" in
+                    *offset*) offset=$(echo "$input" | sed -E 's/.*"offset"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/') ;;
+                esac
+                [ -z "$offset" ] && offset=0
+                
+                running="false"
+                if [ -f "/tmp/forkop_zapret/runner.lock" ] && kill -0 "$(cat "/tmp/forkop_zapret/runner.lock" 2>/dev/null)" 2>/dev/null; then
+                    running="true"
+                fi
+                
+                total_lines=0
+                new_text=""
+                if [ -f "$LOG_FILE" ]; then
+                    total_lines=$(wc -l < "$LOG_FILE" | tr -d ' ')
+                    if [ "$total_lines" -gt "$offset" ]; then
+                        new_text=$(sed -n "$((offset + 1)),${total_lines}p" "$LOG_FILE" | awk '{
+                            gsub(/\\/, "\\\\");
+                            gsub(/"/, "\\\"");
+                            gsub(/\r/, "");
+                            printf "%s\\n", $0;
+                        }')
+                    fi
+                fi
+                new_text=$(printf '%s' "$new_text" | sed 's/\\n$//')
+                echo "{\"running\":$running,\"next_offset\":$total_lines,\"log_chunk\":\"$new_text\"}"
+                ;;
+            save_settings)
+                read -r input
+                . "$CONF_FILE" 2>/dev/null
+                SECTIONS=$(json_val "$input" "sections")
+                STRAT_CATS=$(json_val "$input" "strat_cats")
+                ALL_COMBOS=$(json_val "$input" "all_combos")
+                AUTO_APPLY=$(json_val "$input" "auto_apply")
+                CRON_SCHEDULE=$(json_val "$input" "cron_schedule")
+                DNS_PROTO=$(json_val "$input" "dns_proto")
+                DNS_SERVER=$(json_val "$input" "dns_server")
+                VPN_SECTION=$(json_val "$input" "vpn_section")
+                ONLY_STRAT_UPDATE=$(json_val "$input" "only_strat_update")
+                DISABLE_UPDATES=$(json_val "$input" "disable_updates")
+                INCLUDE_ZM_DOMAINS=$(json_val "$input" "include_zm_domains")
+                if echo "$input" | grep -q '"custom_strategy"'; then
+                    CUSTOM_STRATEGY=$(json_val "$input" "custom_strategy")
+                    uci -q set forkop_zapret.settings.custom_strategy="$CUSTOM_STRATEGY"
+                    uci -q commit forkop_zapret
+                fi
+
+                cat > "$CONF_FILE" <<EOF
+SECTIONS="$SECTIONS"
+STRAT_CATS="$STRAT_CATS"
+ALL_COMBOS="$ALL_COMBOS"
+AUTO_APPLY="$AUTO_APPLY"
+CRON_SCHEDULE="$CRON_SCHEDULE"
+DNS_PROTO="$DNS_PROTO"
+DNS_SERVER="$DNS_SERVER"
+VPN_SECTION="$VPN_SECTION"
+ONLY_STRAT_UPDATE="$ONLY_STRAT_UPDATE"
+DISABLE_UPDATES="$DISABLE_UPDATES"
+INCLUDE_ZM_DOMAINS="$INCLUDE_ZM_DOMAINS"
+CUSTOM_STRATEGY="${CUSTOM_STRATEGY:-}"
+BEST_STRATEGY=""
+BUILDER_STATE=""
+EOF
+                apply_cron_schedule "$CRON_SCHEDULE" "$SECTIONS" "$AUTO_APPLY"
+                echo '{"ok":true}'
+                ;;
+            save_section_settings)
+                read -r input
+                sec=$(json_val "$input" "section")
+                if [ -z "$sec" ]; then echo '{"ok":false,"error":"section required"}'; exit 0; fi
+                slug=$(section_slug "$sec")
+                uci -q delete "forkop_zapret.cfg_${slug}" 2>/dev/null
+                uci -q set "forkop_zapret.cfg_${slug}=section_settings"
+                uci -q set "forkop_zapret.cfg_${slug}.section_name=$sec"
+                for _k in enabled strat_cats all_combos auto_apply cron_schedule dns_proto dns_server vpn_section only_strat_update disable_updates include_zm_domains custom_strategy follow_enabled follow_from; do
+                    _v=$(json_val "$input" "$_k")
+                    uci -q set "forkop_zapret.cfg_${slug}.${_k}=${_v}"
+                done
+                _dsv=$(json_val "$input" "dns_servers")
+                if [ -n "$_dsv" ]; then
+                    uci -q delete "forkop_zapret.cfg_${slug}.dns_server"
+                    _oldIFS=$IFS
+                    IFS=';'
+                    for _e in $_dsv; do
+                        [ -n "$_e" ] && uci -q add_list "forkop_zapret.cfg_${slug}.dns_server=$_e"
+                    done
+                    IFS=$_oldIFS
+                fi
+                uci -q commit forkop_zapret
+                apply_section_cron "$sec"
+                if [ "$(uci -q get "forkop_zapret.cfg_${slug}.follow_enabled" 2>/dev/null)" = "1" ]; then
+                    _src=$(uci -q get "forkop_zapret.cfg_${slug}.follow_from" 2>/dev/null)
+                    [ -n "$_src" ] && apply_follow_now "$sec" "$_src"
+                fi
+                echo '{"ok":true}'
+                ;;
+            start_test)
+                read -r input
+                sec=$(json_val "$input" "section")
+                auto=$(json_val "$input" "auto_apply")
+                if [ -n "$sec" ]; then
+                    run_secs="$sec"
+                    if [ -z "$auto" ]; then
+                        _slug=$(section_slug "$sec")
+                        auto=$(uci -q get "forkop_zapret.cfg_${_slug}.auto_apply" 2>/dev/null)
+                    fi
+                else
+                    secs=$(json_val "$input" "sections")
+                    scats=$(json_val "$input" "strat_cats")
+                    acomb=$(json_val "$input" "all_combos")
+                    inczm=$(json_val "$input" "include_zm_domains")
+                    . "$CONF_FILE" 2>/dev/null
+                    cat > "$CONF_FILE" <<EOF
+SECTIONS="${secs:-$SECTIONS}"
+STRAT_CATS="${scats:-$STRAT_CATS}"
+ALL_COMBOS="${acomb:-$ALL_COMBOS}"
+AUTO_APPLY="${auto:-$AUTO_APPLY}"
+CRON_SCHEDULE="$CRON_SCHEDULE"
+DNS_PROTO="$DNS_PROTO"
+DNS_SERVER="$DNS_SERVER"
+VPN_SECTION="$VPN_SECTION"
+ONLY_STRAT_UPDATE="$ONLY_STRAT_UPDATE"
+DISABLE_UPDATES="$DISABLE_UPDATES"
+INCLUDE_ZM_DOMAINS="${inczm:-$INCLUDE_ZM_DOMAINS}"
+CUSTOM_STRATEGY="${CUSTOM_STRATEGY:-}"
+BEST_STRATEGY=""
+BUILDER_STATE=""
+EOF
+                    run_secs="${secs:-$SECTIONS}"
+                    [ -n "$auto" ] || auto="$AUTO_APPLY"
+                fi
+
+                if [ -n "$run_secs" ]; then
+                    : > "$LOG_FILE"
+                    setsid /bin/sh "$RUNNER" --run "${run_secs}" "${auto:-1}" 0 </dev/null >/dev/null 2>&1 &
+                    echo '{"started":true}'
+                else
+                    echo '{"started":false}'
+                fi
+                ;;
+            check_block)
+                read -r input
+                _secs=$(json_val "$input" "sections")
+                _dom=$(json_val "$input" "domain")
+                setsid /bin/sh "$CHECK" --block "$_secs" "$_dom" </dev/null >/dev/null 2>&1 &
+                echo '{"started":true}'
+                ;;
+            check_forkop)
+                read -r input
+                _secs=$(json_val "$input" "sections")
+                _dom=$(json_val "$input" "domain")
+                setsid /bin/sh "$CHECK" --forkop "$_secs" "$_dom" </dev/null >/dev/null 2>&1 &
+                echo '{"started":true}'
+                ;;
+            get_check_log)
+                read -r input
+                offset=0
+                case "$input" in *offset*) offset=$(echo "$input" | sed -E 's/.*"offset"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/') ;; esac
+                [ -z "$offset" ] && offset=0
+                running="false"
+                if [ -f "/tmp/forkop_zapret/check.lock" ] && kill -0 "$(cat "/tmp/forkop_zapret/check.lock" 2>/dev/null)" 2>/dev/null; then running="true"; fi
+                total_lines=0
+                new_text=""
+                if [ -f "/tmp/forkop_zapret/check.log" ]; then
+                    total_lines=$(wc -l < "/tmp/forkop_zapret/check.log" | tr -d ' ')
+                    if [ "$total_lines" -gt "$offset" ]; then
+                        new_text=$(sed -n "$((offset + 1)),${total_lines}p" "/tmp/forkop_zapret/check.log" | awk '{ gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\r/,""); printf "%s\\n",$0; }')
+                    fi
+                fi
+                new_text=$(printf '%s' "$new_text" | sed 's/\\n$//')
+                echo "{\"running\":$running,\"next_offset\":$total_lines,\"log_chunk\":\"$new_text\"}"
+                ;;
+            stop_check)
+                setsid /bin/sh "$CHECK" --stop </dev/null >/dev/null 2>&1 &
+                echo '{"stopped":true}'
+                ;;
+            stop_test)
+                setsid /bin/sh "$RUNNER" --stop </dev/null >/dev/null 2>&1 &
+                sed -i '/forkop_zapret_once/d' /etc/crontabs/root
+                /etc/init.d/cron restart
+                ps | grep "runner.sh --run" | grep -v grep | awk '{print $1}' | xargs -r kill -9
+                echo '{"stopped":true}'
+                ;;
+            apply_custom)
+                read -r input
+                secs=$(json_val "$input" "sections")
+                name=$(json_val "$input" "name")
+                strat=$(json_val "$input" "strategy")
+                bstate=$(json_val "$input" "builder_state")
+
+                . "$CONF_FILE" 2>/dev/null
+                sed -i "s|^BEST_STRATEGY=.*|BEST_STRATEGY=\"$name\"|" "$CONF_FILE"
+                sed -i "s|^BUILDER_STATE=.*|BUILDER_STATE=\"$bstate\"|" "$CONF_FILE"
+                [ -n "$secs" ] && sed -i "s|^SECTIONS=.*|SECTIONS=\"$secs\"|" "$CONF_FILE"
+
+                setsid /bin/sh "$RUNNER" --apply-custom "$secs" "${name:-Custom}" "$strat" </dev/null >/dev/null 2>&1 &
+                echo '{"ok":true}'
+                ;;
+        esac
+        ;;
+esac

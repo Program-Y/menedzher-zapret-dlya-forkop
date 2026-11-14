@@ -1,0 +1,15 @@
+{
+    "luci-app-forkop-zapret": {
+        "description": "Grant access to forkop.zapret RPC methods",
+        "read": {
+            "ubus": {
+                "forkop.zapret": [ "*" ]
+            }
+        },
+        "write": {
+            "ubus": {
+                "forkop.zapret": [ "*" ]
+            }
+        }
+    }
+}

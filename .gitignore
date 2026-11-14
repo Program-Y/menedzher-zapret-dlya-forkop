@@ -1,0 +1,16 @@
+# секреты и локальные артефакты
+*.key
+router_ssh_key
+router_ssh_key.pub
+known_hosts
+Screenshot_*.png
+*.log
+results.txt
+nfqws_err.log
+
+# временное
+/tmp/
+*.bak
+*.orig
+.DS_Store
+Thumbs.db

@@ -1,0 +1,290 @@
+
+config settings 'settings'
+	option config_version '1.0.5'
+	list applied_migrations 'interface_sections'
+	list applied_migrations 'enable_component_checks'
+	list applied_migrations 'http_connection_urls'
+	option dns_type 'dot'
+	option dns_check_interval '10s'
+	option dns_recovery_check_interval '60s'
+	option dns_check_timeout '2s'
+	option dns_rewrite_ttl '60'
+	option dns_strategy 'ipv4_only'
+	option dns_detour_enabled '1'
+	list source_network_interfaces 'br-lan'
+	option enable_output_network_interface '0'
+	option enable_badwan_interface_monitoring '0'
+	option enable_yacd '0'
+	option disable_quic '1'
+	option list_update_enabled '1'
+	option update_interval '1d'
+	option component_update_check_enabled '1'
+	option component_update_check_interval '1d'
+	option latency_test_url 'https://www.gstatic.com/generate_204'
+	option download_lists_via_proxy '0'
+	option download_components_via_proxy '0'
+	option dont_touch_dhcp '0'
+	option config_path '/etc/sing-box/config.json'
+	option cache_path '/tmp/sing-box/cache.db'
+	option log_level 'trace'
+	option exclude_ntp '1'
+	option shutdown_correctly '0'
+	list bootstrap_dns_server '8.8.8.8'
+	list dns_server '8.8.8.8'
+	option dns_detour_section 'main_vpn'
+
+config section 'dns_rus'
+	option enabled '1'
+	option action 'dns'
+	option dns_type 'dot'
+	option dns_server '77.88.8.8'
+	option dns_detour_enabled '0'
+	list rule_set '/etc/forkop/forkop_rules_rus.json'
+
+config section 'ru_sector'
+	option enabled '1'
+	option action 'bypass'
+	list rule_set_with_subnets '/etc/forkop/forkop_rules_rus.json'
+	option ip_cidr '83.237.131.206'
+
+config section 'main_vpn'
+	option enabled '1'
+	option action 'connection'
+	option outbound_detour_enabled '0'
+	option sort_by_latency '1'
+	option mixed_proxy_enabled '0'
+	option resolve_real_ip_for_routing '0'
+	option domain 'searchfloor.org
+freedns.afraid.org
+papervpn.io
+howto.info.gf
+virustotal.com
+keyword:virustotal
+
+wardxp.vivox.com
+keyword:vivox
+vivox.com
+
+
+//Р±Р°С‚Р»Р° Рё РґСѓР±Р»СЊ РєР»Р°СѓРґС„Р»РµРµСЂ
+battlefield.com, battlefield1943.com, battlefield3.com, battlefield4.com, battlefield5.com, battlefield6.com, battlefieldheroes.com, battlefieldv.com, battlelog.com
+cdn.battleye.com, battleye.b-cdn.net, update.battleye.com, battleye.com, b-cdn.net, rtm.tnt-ea.com, shapr3d.com
+argotunnel.com, cfargotunnel.com, cfl.re, cloudflare-dns.com, cloudflare-ech.com, cloudflare-esni.com, cloudflare-gateway.com, cloudflare-quic.com, cloudflare-stream.com, cloudflare-ipfs.com, cloudflare-tv.com, cloudflare-access.com, cloudflare-apps.com, cloudflare-bolt.com, cloudflare-client.com, cloudflare-insights.com, cloudflare-ok.com, cloudflare-partners.com, cloudflare-portal.com, cloudflare-preview.com, cloudflare-resolve.com, cloudflare-ssl.com, cloudflare-status.com, cloudflare-storage.com, cloudflare-test.com, cloudflare-warp.com, cloudflare.com, cloudflare.net, cloudflare.tv, cloudflare.dev, cloudflare.design, cloudflare.network, cloudflare.cloud, cloudflare.co, cloudflare.us, cloudflare.lol, cloudflare.blog, cloudflarecp.com
+cloudflarebolt.com, cloudflareclient.com, cloudflareinsights.com, cloudflareok.com, cloudflarepartners.com, cloudflareportal.com, cloudflarepreview.com,encryptedsni.com, isbgpsafeyet.com, one.one.one.one, one.one.one, pacloudflare.com, pages.dev, trycloudflare.com, videodelivery.net, warp.plus, workers.dev, nexus-cdn.com, supporter-files.nexus-cdn.com, files.nexus-cdn.com
+
+//РґСѓР±Р»СЊ СѓС‚СѓР±Р°
+ggpht.cn, ggpht.com, googlevideo.com, wide-youtube.l.google.com, withyoutube.com, youtu.be, youtube-nocookie.com, youtube-ui.l.google.com, youtube.ae, youtube.al, youtube.am, youtube.at, youtube.az, youtube.ba, youtube.be, youtube.bg, youtube.bh, youtube.bo, youtube.by, youtube.ca, youtube.cat, youtube.ch, youtube.cl, youtube.co, youtube.co.ae, youtube.co.at, youtube.co.cr, youtube.co.hu, youtube.co.id, youtube.co.il, youtube.co.in, youtube.co.jp, youtube.co.ke, youtube.co.kr, youtube.co.ma, youtube.co.nz, youtube.co.th, youtube.co.tz, youtube.co.ug, youtube.co.uk, youtube.co.ve, youtube.co.za, youtube.co.zw, youtube.com, youtube.com.ar, youtube.com.au, youtube.com.az, youtube.com.bd, youtube.com.bh, youtube.com.bo, youtube.com.br, youtube.com.by, youtube.com.co, youtube.com.do, youtube.com.ec, youtube.com.ee, youtube.com.eg, youtube.com.es, youtube.com.gh, youtube.com.gr, youtube.com.gt, youtube.com.hk, youtube.com.hn, youtube.com.hr, youtube.com.jm, youtube.com.jo, youtube.com.kw, youtube.com.lb, youtube.com.lv, youtube.com.ly, youtube.com.mk, youtube.com.mt, youtube.com.mx, youtube.com.my, youtube.com.ng, youtube.com.ni, youtube.com.om, youtube.com.pa, youtube.com.pe, youtube.com.ph, youtube.com.pk, youtube.com.pt, youtube.com.py, youtube.com.qa, youtube.com.ro, youtube.com.sa, youtube.com.sg, youtube.com.sv, youtube.com.tn, youtube.com.tr, youtube.com.tw, youtube.com.ua, youtube.com.uy, youtube.com.ve, youtube.cr, youtube.cz, youtube.de, youtube.dk, youtube.ee, youtube.es, youtube.fi, youtube.fr, youtube.ge, youtube.googleapis.com, youtube.gr, youtube.gt, youtube.hk, youtube.hr, youtube.hu, youtube.ie, youtube.in, youtube.iq, youtube.is, youtube.it, youtube.jo, youtube.jp, youtube.kr, youtube.kz, youtube.la, youtube.lk, youtube.lt, youtube.lu, youtube.lv, youtube.ly, youtube.ma, youtube.md, youtube.me, youtube.mk, youtube.mn, youtube.mx, youtube.my, youtube.ng, youtube.ni, youtube.nl, youtube.no, youtube.pa, youtube.pe, youtube.ph, youtube.pk, youtube.pl, youtube.pr, youtube.pt, youtube.qa, youtube.ro, youtube.rs, youtube.ru, youtube.sa, youtube.se, youtube.sg, youtube.si, youtube.sk, youtube.sn, youtube.soy, youtube.sv, youtube.tn, youtube.tv, youtube.ua, youtube.ug, youtube.uy, youtube.vn, youtubeeducation.com, youtubeembeddedplayer.googleapis.com, youtubefanfest.com,i.ytimg.com youtubegaming.com, youtubego.co.id, youtubego.co.in, youtubego.com, youtubego.com.br, youtubego.id, youtubego.in, youtubei.googleapis.com, youtubekids.com, youtubemobilesupport.com, yt.be, yt3.googleusercontent.com
+
+
+//whatsapp
+g.whatsapp.net
+graph.whatsapp.com
+media.fbkk29-1.fna.whatsapp.net
+media.fbkk29-2.fna.whatsapp.net
+media.fbkk29-3.fna.whatsapp.net
+media.fbkk29-4.fna.whatsapp.net
+media.fbkk29-5.fna.whatsapp.net
+media.fbkk29-6.fna.whatsapp.net
+media.fbkk29-7.fna.whatsapp.net
+media.fbkk29-8.fna.whatsapp.net
+media.fbkk29-9.fna.whatsapp.net
+web.whatsapp.com
+whatsapp-cdn-shv-01-amt2.fbcdn.net
+whatsapp-cdn-shv-01-any2.fbcdn.net
+whatsapp-cdn-shv-01-arn2.fbcdn.net
+whatsapp-cdn-shv-01-bru2.fbcdn.net
+whatsapp-cdn-shv-01-hel3.fbcdn.net
+whatsapp.com
+whatsapp.net
+www.whatsapp.com
+www.whatsapp.net
+wa.me
+wl.co
+whatsappbrand.com
+whatsapp.cc
+whatsapp-plus.info
+whatsapp-plus.me
+whatsapp-plus.net
+whatsapp.org
+whatsapp.tv
+whatsapp.info
+b.ns.whatsapp.net
+c.ns.whatsapp.net
+d.ns.whatsapp.net
+a.ns.whatsapp.net
+
+# --- ChatGPT / OpenAI ---
+chatgpt.com
+chat.openai.com
+api.openai.com
+platform.openai.com
+auth.openai.com
+cdn.openai.com
+cdn.oaistatic.com
+oaistatic.com
+oaiusercontent.com
+oaiistatsig.com
+ws.chatgpt.com
+sora.com
+full:chatgpt.com
+full:openai.com
+full:auth.openai.com
+full:gemini.google.com
+full:generativelanguage.googleapis.com
+challenges.cloudflare.com
+intercom.io
+js.intercomcdn.com
+
+# --- Google Gemini / AI Studio (СЂР°СЃС€РёСЂРµРЅРЅС‹Р№) ---
+gemini.google.com
+aistudio.google.com
+gemini.gstatic.com
+keyword:gemini
+keyword:google.com
+generativelanguage.googleapis.com
+alkalimining-pa.googleapis.com
+proactivebackend-pa.googleapis.com
+geller-pa.googleapis.com
+firebaseinstallations.googleapis.com
+speechs3proto2-pa.googleapis.com
+assistantfrontend-pa.googleapis.com
+assistant-s3-pa.googleapis.com
+searchnotifications-pa.googleapis.com
+notifications.googleapis.com
+lamssettings-pa.googleapis.com
+taskassist-pa.googleapis.com
+aisandbox-pa.googleapis.com
+robinfrontend-pa.googleapis.com
+
+
+t.me
+tg.dev
+tg.org
+tx.me
+teleg.xyz
+telegram.ai
+telegram.asia
+telegram.biz
+telegram.cloud
+telegram.cn
+telegram.co
+telegram.com
+telegram.de
+telegram.dev
+telegram.dog
+telegram.eu
+telegram.fr
+telegram.host
+telegram.in
+telegram.info
+telegram.io
+telegram.jp
+telegram.me
+telegram.net
+telegram.org
+telegram.qa
+telegram.ru
+telegram.services
+telegram.solutions
+telegram.space
+telegram.team
+telegram.tech
+telegram.uk
+telegram.us
+telegram.website
+telegram.xyz
+telegramapp.org
+telegra.ph
+telesco.pe
+nicegram.app
+telegramdownload.com
+cdn-telegram.org
+comments.app
+contest.com
+fragment.com
+graph.org
+quiz.directory
+tdesktop.com
+telega.one
+telegram-cdn.org
+usercontent.dev
+tgram.org
+torg.org'
+	option ip_cidr '//discord+whatsapp
+104.16.0.0/12
+31.13.24.0/17
+45.64.40.0/22
+57.141.0.0/20
+57.144.0.0/14
+66.220.144.0/20
+69.63.176.0/20
+69.171.224.0/19
+74.119.76.0/22
+102.132.96.0/20
+103.4.96.0/22
+129.134.0.0/17
+157.240.0.0/17
+157.240.192.0/18
+163.70.128.0/17
+173.252.64.0/19
+173.252.96.0/19
+179.60.192.0/22
+185.60.216.0/22
+204.15.20.0/22'
+	option dashboard_filter_mode 'disabled'
+	list community_lists 'russia_inside'
+	list community_lists 'discord'
+	list community_lists 'telegram'
+	list community_lists 'cloudflare'
+	list rule_set 'https://github.com/vernette/rulesets/raw/master/srs/gemini.srs'
+	list rule_set_with_subnets 'https://github.com/Repcz/Tool/raw/refs/heads/X/sing-box/Rules/AI.srs'
+	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/openai.srs'
+	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/claude.srs'
+	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/grok.srs'
+
+config urltest
+	option section 'main_vpn'
+	option name 'fast'
+	option check_interval '3m'
+	option tolerance '250'
+	option testing_url 'https://www.gstatic.com/generate_204'
+	option idle_timeout '30m'
+	option interrupt_exist_connections '1'
+	option pin_dashboard '1'
+	option filter_mode 'disabled'
+	option detect_server_country 'flag_emoji'
+
+config section 'zapret_server'
+	option enabled '1'
+	option action 'zapret'
+	option mixed_proxy_enabled '0'
+	option domain 'elytra.ac
+live.wardogs.bulkhead.pragmaengine.com
+firstlook.gg
+pragmaengine.com
+api.epicgames.dev
+keyword:epicgames.dev
+game.live.wardogs.bulkhead.pragmaengine.com
+social.live.wardogs.bulkhead.pragmaengine.com
+keyword:elytra.ac
+
+
+keyword:wardogs
+keyword:bulkhead
+
+wardxp.vivox.com
+keyword:vivox
+vivox.com'
+	option nfqws_opt '--filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-discord=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-fake-stun=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-repeats=6 --new --filter-tcp=2053,2083,2087,2096,8443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=80,443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=664 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --new --filter-udp=88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535 --dpi-desync=fake --dpi-desync-cutoff=d2 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --new --filter-tcp=2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442 --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n5 --dpi-desync=multisplit --dpi-desync-split-seqovl=582 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin'
+	option zapret_strategy '--filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-discord=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-fake-stun=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-repeats=6 --new --filter-tcp=2053,2083,2087,2096,8443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=80,443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=664 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --new --filter-udp=88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535 --dpi-desync=fake --dpi-desync-cutoff=d2 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --new --filter-tcp=2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442 --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n5 --dpi-desync=multisplit --dpi-desync-split-seqovl=582 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin'
+
+config section 'zapret'
+	option enabled '1'
+	option action 'zapret'
+	option mixed_proxy_enabled '0'
+	option nfqws_opt '--filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-discord=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-fake-stun=/opt/zapret/files/fake/quic_initial_steamcommunity_com.bin --dpi-desync-repeats=6 --new --filter-tcp=2053,2083,2087,2096,8443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --new --filter-tcp=80,443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=664 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-http=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --new --filter-udp=88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535 --dpi-desync=fake --dpi-desync-cutoff=d2 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --new --filter-tcp=2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442 --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n5 --dpi-desync=multisplit --dpi-desync-split-seqovl=582 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin'
+	option ip_cidr '0.0.0.0/0
+::0'
+	option label 'zapret_port'
+	list ports '18000-29000'
+
