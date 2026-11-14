@@ -33,6 +33,96 @@ ask_yes_d() {
     case "$ans" in n|N|no|NO|нет|Нет) return 1 ;; *) return 0 ;; esac
 }
 
+# --- Форсирование IPv4 на время установки (иначе opkg/wget висят на IPv6) ---
+disable_ipv6() {
+    [ -w /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null
+    [ -w /proc/sys/net/ipv6/conf/default/disable_ipv6 ] && echo 1 > /proc/sys/net/ipv6/conf/default/disable_ipv6 2>/dev/null
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+}
+
+enable_ipv6() {
+    [ -w /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null
+    [ -w /proc/sys/net/ipv6/conf/default/disable_ipv6 ] && echo 0 > /proc/sys/net/ipv6/conf/default/disable_ipv6 2>/dev/null
+    sysctl -w net.ipv6.conf.all.disable_ipv6=0 >/dev/null 2>&1 || true
+}
+
+# --- Поиск файлов-заглушек вида "OK <pkg> -" ---
+scan_stubs() {
+    for d in /bin /sbin /usr/bin /usr/sbin /usr/libexec; do
+        for f in "$d"/*; do
+            [ -f "$f" ] || continue
+            [ -L "$f" ] && continue
+            if head -c 3 "$f" 2>/dev/null | grep -q '^OK '; then
+                echo "$f"
+            fi
+        done
+    done
+    for f in /usr/lib/*.so* /usr/lib/lib*; do
+        [ -f "$f" ] || continue
+        [ -L "$f" ] && continue
+        if head -c 3 "$f" 2>/dev/null | grep -q '^OK '; then
+            echo "$f"
+        fi
+    done
+}
+
+verify_critical() {
+    local bad=0 f s
+    for f in /usr/libexec/ip-full /usr/bin/curl /usr/bin/dig /usr/bin/jsonfilter /usr/sbin/nft; do
+        [ -e "$f" ] || continue
+        [ -L "$f" ] && continue
+        s=$(wc -c < "$f" 2>/dev/null)
+        if [ "${s:-0}" -lt 1000 ] || head -c 3 "$f" 2>/dev/null | grep -q '^OK '; then
+            echo "[!] Повреждён: $f ($s байт)"
+            bad=1
+        fi
+    done
+    return $bad
+}
+
+repair_stub_pkgs() {
+    echo "[-] Восстановление пакетов из официальных ipk..."
+    disable_ipv6
+    opkg update 2>/dev/null
+    for pkg in ip-full curl bind-dig jsonfilter nftables; do
+        echo "[-] Переустановка $pkg..."
+        opkg install --force-reinstall "$pkg" 2>/dev/null || opkg install "$pkg" 2>/dev/null || echo "[!] Не удалось: $pkg"
+    done
+    enable_ipv6
+}
+
+# ==================================================
+# ЭТАП 0: ПРОВЕРКА ЦЕЛОСТНОСТИ СИСТЕМНЫХ ФАЙЛОВ
+# ==================================================
+echo "[-] Проверка целостности системных файлов (заглушки/битые бинарники)..."
+STUBS=$(scan_stubs | grep -vE '/(sing-box|forkop|xray|nfqws)$')
+if [ -n "$STUBS" ]; then
+    echo "[!] Найдены файлы-заглушки:"
+    echo "$STUBS" | sed 's/^/    /'
+    case "$STUBS" in
+        *"/ubus"*|*"/ubusd"*|*"/procd"*|*"/netifd"*|*"/dnsmasq"*|*"/rpcd"*|*"/uhttpd"*|*"/opkg"*|*"/libc.so"*|*"/libubox"*|*"/libblobmsg"*)
+            echo "[x] Повреждены системные компоненты — установка невозможна. Нужна перепрошивка."
+            exit 1
+            ;;
+    esac
+    repair_stub_pkgs
+    STUBS=$(scan_stubs | grep -vE '/(sing-box|forkop|xray|nfqws)$')
+    if [ -n "$STUBS" ]; then
+        echo "[x] Заглушки остались:"
+        echo "$STUBS" | sed 's/^/    /'
+        echo "[x] Остановка: система повреждена, требуется перепрошивка."
+        exit 1
+    fi
+    echo "[+] Пакеты восстановлены."
+else
+    echo "[+] Заглушек не найдено."
+fi
+if ! verify_critical; then
+    echo "[x] Критичные бинарники повреждены — остановка."
+    exit 1
+fi
+echo "[+] Целостность критичных файлов в порядке."
+
 # ==================================================
 # ЭТАП 1: ПРОВЕРКА "ЖЕЛЕЗА" (ОБЩИЕ РЕСУРСЫ)
 # ==================================================
@@ -147,6 +237,11 @@ arch all 100
 arch $ARCH 10
 EOF
 
+# Форсируем IPv4 на время скачиваний (иначе opkg/wget висят на IPv6)
+trap 'enable_ipv6' EXIT INT TERM
+disable_ipv6
+echo "[-] IPv6 временно отключён (для скачиваний по IPv4)."
+
 echo "[-] Обновление списков пакетов..."
 opkg update
 
@@ -154,6 +249,18 @@ echo "[-] Установка зависимостей..."
 opkg install luci-compat
 opkg install luci-i18n-base-ru luci-i18n-ttyd-ru
 opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth
+
+echo "[-] Проверка, что зависимости установились настоящими файлами..."
+if ! verify_critical; then
+    echo "[!] Не все критичные пакеты установились. Пробую восстановить..."
+    for pkg in ip-full curl bind-dig jsonfilter nftables; do
+        opkg install --force-reinstall "$pkg" 2>/dev/null
+    done
+    if ! verify_critical; then
+        echo "[x] Пакеты повреждены — установка остановлена. Нужна перепрошивка."
+        exit 1
+    fi
+fi
 
 echo "[-] Скачивание пакетов Forkop 1.0.5..."
 cd /tmp
@@ -166,7 +273,7 @@ echo "[-] Установка Forkop..."
 opkg install --force-depends --force-overwrite /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk
 
 # ==================================================
-# ЭТАП 5: ZAPRET, FAKE-ФАЙЛЫ И ЗАПУСК
+# ЭТАП 5: ZAPRET, FAKE-ФАЙЛЫ И КОНФИГ
 # ==================================================
 if [ ! -f /etc/init.d/forkop ]; then
     echo "[x] ОШИБКА: Установка Forkop не удалась."
@@ -208,11 +315,6 @@ for f in stun.bin stun2.bin quic_initial_tencent_com.bin quic_initial_steamcommu
   wget -q -U "Mozilla/5.0" -O "/opt/zapret/files/fake/$f" "$BASE/$f" || echo " [!] Не удалось скачать: $f"
 done
 
-echo "[-] Включение и запуск Forkop..."
-chmod +x /etc/init.d/forkop
-/etc/init.d/forkop enable
-/etc/init.d/forkop start
-
 # 5.3 — авто-настройка из config/
 if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
     if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?"; then
@@ -231,7 +333,6 @@ if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
         uci commit forkop_zapret 2>/dev/null
         uci commit zapret 2>/dev/null
         uci commit sing-box 2>/dev/null
-        /etc/init.d/forkop reload 2>/dev/null || /etc/init.d/forkop restart 2>/dev/null
         echo "[+] Конфигурация применена."
         echo "[i] VPN-подписка/ключи в конфиг НЕ входят — добавьте их в LuCI (Forkop → Connections)."
     fi
@@ -239,10 +340,27 @@ else
     echo "[i] Каталог config/ не найден — авто-настройка пропущена."
 fi
 
+# 5.4 — запуск с проверкой; автозапуск включаем только после успеха
+echo "[-] Запуск Forkop (автозапуск пока выключен)..."
+chmod +x /etc/init.d/forkop
+/etc/init.d/forkop disable 2>/dev/null
+/etc/init.d/forkop start
+sleep 8
+if ps 2>/dev/null | grep -v grep | grep -q 'sing-box run'; then
+    /etc/init.d/forkop enable 2>/dev/null
+    echo "[+] Forkop запущен, автозапуск включён."
+else
+    echo "[!] Forkop не запустился — автозапуск НЕ включён."
+    echo "    Проверьте: logread -e forkop"
+fi
+
 # ==================================================
 # ЭТАП 6: ФИНАЛИЗАЦИЯ
 # ==================================================
-echo "[-] Очистка кэша LuCI..."
+echo "[-] Возврат IPv6 и очистка кэша LuCI..."
+enable_ipv6
+trap - EXIT INT TERM
+
 rm -rf /tmp/luci-*
 /etc/init.d/rpcd restart
 /etc/init.d/uhttpd restart
