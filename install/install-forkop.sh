@@ -14,7 +14,11 @@ CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
 ask_yes() {
     [ "$ASSUME_YES" = "1" ] && return 0
     printf "%s [y/N]: " "$1"
-    read ans
+    if [ -r /dev/tty ]; then
+        read ans < /dev/tty
+    else
+        read ans
+    fi
     case "$ans" in y|Y|yes|YES|да|Да) return 0 ;; *) return 1 ;; esac
 }
 

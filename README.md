@@ -1,7 +1,21 @@
-# Forkop + Zapret (расширение для OpenWrt)
+# Менеджер Zapret для Forkop
 
 Расширение для [Forkop](https://github.com/ushan0v/forkop): автоподбор стратегий zapret
 по секциям, проверка блокировки доменов и проверка доступности через forkop.
+
+## Установка одной командой
+
+```sh
+wget -O - https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/install.sh | sh
+```
+
+Для bash также работает:
+
+```sh
+sh <(wget -O - https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/install.sh)
+```
+
+Неинтерактивно: `... | ASSUME_YES=1 sh`.
 
 ## Состав
 
