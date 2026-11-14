@@ -1,7 +1,19 @@
 # Менеджер Zapret для Forkop
 
-Расширение для [Forkop](https://github.com/ushan0v/forkop): автоподбор стратегий zapret
-по секциям, проверка блокировки доменов и проверка доступности через forkop.
+Установщик и LuCI-расширение для [Forkop](https://github.com/ushan0v/forkop) на OpenWrt.
+Ставит «начисто»: **предварительно полностью очищает** старые podkop, forkop, sing-box,
+zapret и предыдущую версию расширения — и только потом устанавливает Forkop + расширение.
+
+## Что делает установщик
+
+- **Полная очистка перед установкой**: podkop, forkop, sing-box, zapret, расширение
+  `forkop-zapret` (пакеты, конфиги, автозапуск).
+- Ставит Forkop 1.0.5 и все зависимости (включая `kmod-veth`, `jsonfilter`, `kmod-nft-queue`).
+- Спрашивает, ставить ли **extended sing-box** (на роутерах — из фидов; на x86 — отдельный скрипт).
+  Если ответить «нет» — sing-box не ставится вообще.
+- Спрашивает, ставить ли **zapret**. Если «нет» — zapret не ставится.
+- Предлагает **авто-настройку** из `config/`: конфиг forkop, локальные списки
+  (`forkop_rules_rus.json`, `.srs`) и настройки расширения.
 
 ## Установка одной командой
 
@@ -15,76 +27,46 @@ wget -O - https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-fork
 sh <(wget -O - https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/install.sh)
 ```
 
-Неинтерактивно: `... | ASSUME_YES=1 sh`.
+Неинтерактивно (все вопросы — «Да»): `... | ASSUME_YES=1 sh`.
 
-## Состав
-
-```
-addon/                  файлы расширения (копируются на роутер)
-  runner.sh             движок автоподбора
-  parser.sh             сбор доменов (включая community_lists и rule_set .srs/.json)
-  check.sh              проверка доменов (блокировка + через forkop/netns)
-  rpcd/forkop.zapret    RPCD-бэкенд LuCI
-  view/forkop-zapret/main.js   LuCI-вью
-  menu.d/, acl.d/       меню и права LuCI
-install/
-  install-forkop.sh         мастер установки Forkop (+ zapret, extended sing-box, авто-настройка)
-  install-addon.sh          установка расширения
-  install-forkop-zapret.sh  полная установка: Forkop + расширение
-config/                 очищенная конфигурация (без ключей/подписок)
-  forkop                конфиг Forkop (subscription_url и VPN-ключи удалены)
-  forkop_zapret         конфиг расширения
-  forkop_zapret.conf
-  zapret, sing-box
-  forkop_rules_rus.json локальный список доменов
-  *.srs                 локальные rule-set
-scripts/
-  install-sing-box-extended-x86.sh   extended sing-box для x86_64
-```
-
-## Установка
-
-На роутере (OpenWrt 24.10+):
+## Установка вручную
 
 ```sh
-# скопируйте репозиторий на роутер, например через scp/git, затем:
-cd /path/to/repo
+git clone https://github.com/Program-Y/menedzher-zapret-dlya-forkop
+cd menedzher-zapret-dlya-forkop
 sh install/install-forkop-zapret.sh
 ```
 
-Скрипт `install-forkop.sh` спросит:
-- установить ли extended sing-box (на роутерах — из фидов; на x86 — отдельный скрипт);
-- установить ли zapret;
-- применить ли сохранённую конфигурацию из `config/`.
-
-Неинтерактивно: `ASSUME_YES=1 sh install/install-forkop-zapret.sh`.
-
-## Конфигурация
-
-- `config/forkop` — очищенная конфигурация: удалён блок `subscription_url` (токен подписки)
-  и персональные домены:
-  `senkuro.me`, `auto.mmzvympel.ru`, `mail.mmzvympel.ru`, `parrotslivesmatter.info.gf`,
-  `PigeonsLivesMatter.mooo.com`, `CatsLivesMatter.mooo.com`, `afteronthe.mooo.com`,
-  `TopOnePUBGersInTheWorld.mooo.com`.
-- Локальные списки `forkop_rules_rus.json` и `*.srs` включены (очищены от тех же доменов).
-- **VPN-подписка/ключи не входят в репозиторий.** После установки добавьте свою подписку
-  или ключи в LuCI → Forkop.
-
-## Расширение: что умеет
-
-- Автоподбор стратегий zapret по секциям (контроль → боевая → кастомная → полный перебор).
-- Порядок и приоритет: все домены секции доступны + максимум доменов ZM.
-- Вкладка «Проверка доменов»: статусы «доступен / нет в DNS / блок по IP / блок по DPI»,
-  проверка через forkop (netns+veth к br-lan), фильтры и проверка одного домена.
-- Мульти-DNS (DoH/DoT/UDP, несколько серверов по очереди).
-- Зеркало стратегии: «Применять настройки из секции».
-
 ## Требования
 
-- OpenWrt 24.10+.
-- `kmod-veth` для проверки через forkop (`opkg install kmod-veth`).
-- `sing-box` / `sing-box-extended`, `zapret` — по желанию.
+- OpenWrt **24.10** или новее.
+- RAM ≥ 64 МБ, свободно на Flash ≥ 15 МБ.
+- Доступ в интернет (opkg-фиды и GitHub).
+- `kmod-veth`, `jsonfilter`, `sing-box` (по выбору), `zapret` (по выбору) — устанавливает скрипт.
+- VPN-подписка/ключи **не входят** в репозиторий — добавьте свои в LuCI → Forkop.
 
-## Безопасность
+## Расширение zapret+forkop: что умеет
 
-В репозитории нет приватных ключей, токенов подписок и подключений.
+### Автоподбор стратегий zapret по секциям Forkop
+- Порядок: контроль без стратегий → боевая стратегия секции → кастомная → полный перебор
+  (быстрый гибрид, категории, комбинации).
+- Остановка, если все домены секции доступны **и** есть прирост по доменам ZM относительно
+  проверки без стратегий.
+- Финальный выбор: все домены секции доступны + максимум доступных ZM-доменов.
+- Настройки, период проверки (cron) и автоприменение — **индивидуально для каждой секции**.
+- «Применять настройки из секции»: найденная стратегия автоматически дублируется в другую
+  выбранную секцию (при сохранении и при каждом изменении стратегии источника).
+
+### Проверка доменов
+- **«Проверить блокировку доменов»**: статусы `Домен доступен`, `Домена нет в DNS`,
+  `Заблокирован по IP`, `Заблокирован по DPI`.
+- **«Проверить доступность через forkop»**: трафик идёт через реальные правила Forkop
+  (netns + veth к `br-lan`, как отдельный LAN-клиент), с индикацией «до → после» (эмодзи).
+- Фильтры по типам вывода, отдельная проверка одного домена, кнопка остановки.
+- Домены берутся из выбранных секций, включая **встроенные наборы** (Russia inside, Discord,
+  Telegram, Cloudflare) и **наборы правил** (`rule_set`/`.srs`, локальные и по URL).
+
+### Прочее
+- Мульти-DNS: несколько серверов, у каждого **DoH / DoT / UDP**, перебор по очереди.
+- Ручной конструктор стратегии (ядро, YouTube, Discord, игровой профиль).
+- Очистка консоли перед каждым действием и живой журнал.

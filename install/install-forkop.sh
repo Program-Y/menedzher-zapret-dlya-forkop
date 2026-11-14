@@ -174,7 +174,7 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — sing-box (extended по умолчанию, иначе базовый)
+# 5.1 — extended sing-box (по желанию; если "нет" — не ставим ничего)
 if ask_yes_d "Установить extended sing-box?"; then
     case "$ARCH" in
         x86_64|i386)
@@ -187,12 +187,11 @@ if ask_yes_d "Установить extended sing-box?"; then
             ;;
         *)
             echo "[-] Установка sing-box-extended из фидов OpenWrt..."
-            opkg install --force-overwrite sing-box-extended 2>/dev/null || opkg install sing-box 2>/dev/null || echo "[!] Не удалось установить sing-box."
+            opkg install --force-overwrite sing-box-extended 2>/dev/null || echo "[!] Не удалось установить sing-box-extended."
             ;;
     esac
 else
-    echo "[-] Установка базового sing-box..."
-    opkg install sing-box 2>/dev/null || echo "[!] Не удалось установить sing-box."
+    echo "[i] sing-box не устанавливается (по желанию пользователя)."
 fi
 
 # 5.2 — zapret
