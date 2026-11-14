@@ -153,7 +153,7 @@ opkg update
 echo "[-] Установка зависимостей..."
 opkg install luci-compat
 opkg install luci-i18n-base-ru luci-i18n-ttyd-ru
-opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth sing-box
+opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth
 
 echo "[-] Скачивание пакетов Forkop 1.0.5..."
 cd /tmp
@@ -174,7 +174,7 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — extended sing-box
+# 5.1 — sing-box (extended по умолчанию, иначе базовый)
 if ask_yes_d "Установить extended sing-box?"; then
     case "$ARCH" in
         x86_64|i386)
@@ -187,9 +187,12 @@ if ask_yes_d "Установить extended sing-box?"; then
             ;;
         *)
             echo "[-] Установка sing-box-extended из фидов OpenWrt..."
-            opkg install --force-overwrite sing-box-extended 2>/dev/null || echo "[!] Не удалось; установите sing-box-extended вручную."
+            opkg install --force-overwrite sing-box-extended 2>/dev/null || opkg install sing-box 2>/dev/null || echo "[!] Не удалось установить sing-box."
             ;;
     esac
+else
+    echo "[-] Установка базового sing-box..."
+    opkg install sing-box 2>/dev/null || echo "[!] Не удалось установить sing-box."
 fi
 
 # 5.2 — zapret
