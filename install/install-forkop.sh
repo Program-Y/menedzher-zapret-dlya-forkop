@@ -22,6 +22,17 @@ ask_yes() {
     case "$ans" in y|Y|yes|YES|да|Да) return 0 ;; *) return 1 ;; esac
 }
 
+ask_yes_d() {
+    [ "$ASSUME_YES" = "1" ] && return 0
+    printf "%s [Y/n]: " "$1"
+    if [ -r /dev/tty ]; then
+        read ans < /dev/tty
+    else
+        read ans
+    fi
+    case "$ans" in n|N|no|NO|нет|Нет) return 1 ;; *) return 0 ;; esac
+}
+
 # ==================================================
 # ЭТАП 1: ПРОВЕРКА "ЖЕЛЕЗА" (ОБЩИЕ РЕСУРСЫ)
 # ==================================================
@@ -142,7 +153,7 @@ opkg update
 echo "[-] Установка зависимостей..."
 opkg install luci-compat
 opkg install luci-i18n-base-ru luci-i18n-ttyd-ru
-opkg install libc kmod-inet-diag kmod-netlink-diag kmod-tun curl ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat ip-full
+opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth sing-box
 
 echo "[-] Скачивание пакетов Forkop 1.0.5..."
 cd /tmp
@@ -164,7 +175,7 @@ fi
 echo "[+] Forkop успешно установлен."
 
 # 5.1 — extended sing-box
-if ask_yes "Установить extended sing-box?"; then
+if ask_yes_d "Установить extended sing-box?"; then
     case "$ARCH" in
         x86_64|i386)
             echo "[i] x86: запускаю scripts/install-sing-box-extended-x86.sh"
@@ -182,7 +193,7 @@ if ask_yes "Установить extended sing-box?"; then
 fi
 
 # 5.2 — zapret
-if ask_yes "Установить zapret (DPI-обход)?"; then
+if ask_yes_d "Установить zapret (DPI-обход)?"; then
     echo "[-] Установка zapret из фидов..."
     opkg install zapret 2>/dev/null || echo "[!] Не удалось установить zapret; установите вручную."
 fi
@@ -202,7 +213,7 @@ chmod +x /etc/init.d/forkop
 
 # 5.3 — авто-настройка из config/
 if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
-    if ask_yes "Применить сохранённую конфигурацию (forkop + локальные списки)?"; then
+    if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?"; then
         echo "[-] Применение конфигурации из $CONFIG_DIR ..."
         mkdir -p /etc/forkop
         cp "$CONFIG_DIR/forkop" /etc/config/forkop
