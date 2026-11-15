@@ -360,18 +360,27 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — sing-box через штатный component_action Forkop (как кнопка в LuCI)
-# Всегда ставим полный extended (не compressed).
-if ask_yes_d "Установить sing-box (extended) через Forkop?"; then
-    SINGBOX_ACTION="install_extended"
-    FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
-    if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
-        echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
-        echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
-    fi
-    if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
-        echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
-    fi
+# 5.1 — sing-box extended: x86_64 — отдельный установщик, остальные — через Forkop
+if ask_yes_d "Установить sing-box (extended)?"; then
+    case "$ARCH" in
+        x86_64)
+            echo "[-] x86_64: Forkop не ставит sing-box — используется scripts/install-sing-box-extended-x86.sh"
+            if ! sh "$REPO_DIR/scripts/install-sing-box-extended-x86.sh"; then
+                echo "[!] Не удалось установить sing-box для x86_64."
+            fi
+            ;;
+        *)
+            SINGBOX_ACTION="install_extended"
+            FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
+            if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
+                echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
+                echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
+            fi
+            if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
+                echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
+            fi
+            ;;
+    esac
 else
     echo "[i] sing-box не устанавливается (по желанию пользователя)."
 fi
