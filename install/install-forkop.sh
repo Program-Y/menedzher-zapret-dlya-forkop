@@ -91,6 +91,41 @@ repair_stub_pkgs() {
     enable_ipv6
 }
 
+# --- Единая загрузка: HTTP-проверка, прогресс, таймаут, размер ---
+download() {
+    local url="$1" out="$2" desc="$3"
+    echo "[-] $desc"
+    echo "    URL: $url"
+    echo "    -> $out"
+    rm -f "$out"
+    local ok=0 code=""
+    if command -v curl >/dev/null 2>&1; then
+        code=$(curl -4 -sIL -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 30 "$url" 2>/dev/null)
+        echo "    HTTP-проверка: ${code:-нет ответа}"
+        if curl -4 -fL --connect-timeout 10 --max-time 300 --retry 2 -o "$out" "$url"; then
+            ok=1
+        else
+            echo "    [!] curl: ошибка скачивания"
+        fi
+    fi
+    if [ "$ok" = "0" ] && command -v wget >/dev/null 2>&1; then
+        echo "    Пробую wget (таймаут 30 с)..."
+        if wget -T 30 -O "$out" "$url"; then
+            ok=1
+        else
+            echo "    [!] wget: ошибка скачивания"
+        fi
+    fi
+    if [ "$ok" = "0" ] || [ ! -s "$out" ]; then
+        echo "    [x] Не удалось скачать: $url"
+        return 1
+    fi
+    local size
+    size=$(wc -c < "$out" 2>/dev/null)
+    echo "    Размер: $size байт"
+    return 0
+}
+
 # ==================================================
 # ЭТАП 0: ПРОВЕРКА ЦЕЛОСТНОСТИ СИСТЕМНЫХ ФАЙЛОВ
 # ==================================================
@@ -263,11 +298,17 @@ if ! verify_critical; then
 fi
 
 echo "[-] Скачивание пакетов Forkop 1.0.5..."
-cd /tmp
 BASE_URL="https://github.com/ushan0v/forkop/releases/download/1.0.5"
-wget -q --no-check-certificate -O forkop.ipk "$BASE_URL/forkop_1.0.5.ipk"
-wget -q --no-check-certificate -O luci-app-forkop.ipk "$BASE_URL/luci-app-forkop_1.0.5.ipk"
-wget -q --no-check-certificate -O luci-i18n-forkop-ru.ipk "$BASE_URL/luci-i18n-forkop-ru_1.0.5.ipk"
+download "$BASE_URL/forkop_1.0.5.ipk" /tmp/forkop.ipk "Пакет forkop" || exit 1
+download "$BASE_URL/luci-app-forkop_1.0.5.ipk" /tmp/luci-app-forkop.ipk "Пакет luci-app-forkop" || exit 1
+download "$BASE_URL/luci-i18n-forkop-ru_1.0.5.ipk" /tmp/luci-i18n-forkop-ru.ipk "Пакет luci-i18n-forkop-ru" || exit 1
+for f in /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk; do
+    if ! tar -tzf "$f" >/dev/null 2>&1; then
+        echo "[x] $f повреждён (не ipk/tar.gz)"
+        exit 1
+    fi
+done
+echo "[+] Пакеты Forkop скачаны и проверены."
 
 echo "[-] Установка Forkop..."
 opkg install --force-depends --force-overwrite /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk
@@ -311,8 +352,7 @@ echo "[-] Скачивание fake-файлов для zapret..."
 mkdir -p /opt/zapret/files/fake
 BASE="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin"
 for f in stun.bin stun2.bin quic_initial_tencent_com.bin quic_initial_steamcommunity_com.bin tls_clienthello_sochi_park.bin quic_initial_4pda_to.bin quic_initial_5ka_ru.bin tls_clienthello_5ka_ru.bin quic_initial_rutube_ru.bin; do
-  echo " -> Скачиваем $f"
-  wget -q -U "Mozilla/5.0" -O "/opt/zapret/files/fake/$f" "$BASE/$f" || echo " [!] Не удалось скачать: $f"
+  download "$BASE/$f" "/opt/zapret/files/fake/$f" "fake-файл $f" || echo " [!] пропущен: $f"
 done
 
 # 5.3 — авто-настройка из config/
