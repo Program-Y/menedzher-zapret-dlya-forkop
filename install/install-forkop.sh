@@ -321,7 +321,7 @@ opkg update
 echo "[-] Установка зависимостей..."
 opkg install luci-compat
 opkg install luci-i18n-base-ru luci-i18n-ttyd-ru
-opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl libcurl4 ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth
+opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl libcurl4 ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig bind-libs nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth
 
 echo "[-] Проверка, что зависимости установились настоящими файлами..."
 if ! verify_critical; then
