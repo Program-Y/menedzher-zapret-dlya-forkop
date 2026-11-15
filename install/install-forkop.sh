@@ -126,6 +126,43 @@ download() {
     return 0
 }
 
+# --- Установка компонента через штатный Forkop (как кнопка в LuCI) ---
+forkop_component() {
+    local component="$1" action="$2" desc="$3"
+    echo "[-] $desc"
+    echo "    forkop component_action_async $component $action"
+    local json job log elapsed=0 running="true" st msg success
+    json=$(forkop component_action_async "$component" "$action" 2>&1)
+    echo "    $json"
+    job=$(echo "$json" | jsonfilter -e '@.job_id' 2>/dev/null)
+    if [ -z "$job" ]; then
+        echo "    [x] Не удалось создать задачу установки"
+        return 1
+    fi
+    log="/var/run/forkop/component-actions/$job.out"
+    while [ "$running" = "true" ]; do
+        sleep 3
+        elapsed=$((elapsed + 3))
+        st=$(forkop component_action_status "$job" 2>/dev/null)
+        running=$(echo "$st" | jsonfilter -e '@.running' 2>/dev/null)
+        msg=$(echo "$st" | jsonfilter -e '@.message' 2>/dev/null)
+        echo "    [$elapsed s] ${msg:-выполняется...}"
+        [ -f "$log" ] && tail -n 2 "$log" 2>/dev/null | sed 's/^/      /'
+        if [ "$elapsed" -ge 1800 ]; then
+            echo "    [x] Таймаут 30 минут"
+            return 1
+        fi
+    done
+    echo "    Итог: $st"
+    success=$(echo "$st" | jsonfilter -e '@.success' 2>/dev/null)
+    if [ "$success" = "true" ]; then
+        return 0
+    fi
+    echo "    [x] Ошибка установки компонента"
+    [ -f "$log" ] && tail -n 30 "$log" | sed 's/^/      /'
+    return 1
+}
+
 # ==================================================
 # ЭТАП 0: ПРОВЕРКА ЦЕЛОСТНОСТИ СИСТЕМНЫХ ФАЙЛОВ
 # ==================================================
@@ -322,30 +359,32 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — extended sing-box (по желанию; если "нет" — не ставим ничего)
-if ask_yes_d "Установить extended sing-box?"; then
-    case "$ARCH" in
-        x86_64|i386)
-            echo "[i] x86: запускаю scripts/install-sing-box-extended-x86.sh"
-            if [ -f "$REPO_DIR/scripts/install-sing-box-extended-x86.sh" ]; then
-                sh "$REPO_DIR/scripts/install-sing-box-extended-x86.sh" || echo "[!] Не удалось; выполните скрипт вручную."
-            else
-                echo "[i] Скрипт не найден рядом. Скачайте его из репозитория и выполните вручную."
-            fi
-            ;;
-        *)
-            echo "[-] Установка sing-box-extended из фидов OpenWrt..."
-            opkg install --force-overwrite sing-box-extended 2>/dev/null || echo "[!] Не удалось установить sing-box-extended."
-            ;;
-    esac
+# 5.1 — sing-box через штатный component_action Forkop (как кнопка в LuCI)
+if ask_yes_d "Установить sing-box (extended) через Forkop?"; then
+    SINGBOX_ACTION="install_extended"
+    FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
+        SINGBOX_ACTION="install_extended_compressed"
+        echo "[i] Свободно $((FREE_KB / 1024)) МБ на flash — использую extended compressed."
+    fi
+    if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box ($SINGBOX_ACTION, Forkop)"; then
+        echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
+    fi
 else
     echo "[i] sing-box не устанавливается (по желанию пользователя)."
 fi
 
-# 5.2 — zapret
-if ask_yes_d "Установить zapret (DPI-обход)?"; then
-    echo "[-] Установка zapret из фидов..."
-    opkg install zapret 2>/dev/null || echo "[!] Не удалось установить zapret; установите вручную."
+# 5.2 — zapret через Forkop, с ДОПОЛНИТЕЛЬНЫМ подтверждением
+if ask_yes_d "Установить Zapret (DPI-обход) через Forkop?"; then
+    if ask_yes "Подтвердить установку компонента Zapret через Forkop?"; then
+        if ! forkop_component zapret install "Установка компонента Zapret (Forkop)"; then
+            echo "[!] Zapret не установился. Проверьте: logread -e forkop / forkop get_zapret_status"
+        fi
+    else
+        echo "[i] Установка Zapret отменена."
+    fi
+else
+    echo "[i] Zapret не устанавливается."
 fi
 
 echo "[-] Скачивание fake-файлов для zapret..."
