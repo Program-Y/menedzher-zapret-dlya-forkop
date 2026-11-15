@@ -98,6 +98,4 @@ cd "$DIR" || { echo "    [x] Не удалось перейти в $DIR"; exit 1
 sh install/install-forkop-zapret.sh
 RC=$?
 
-step "6/6" "Завершение"
-echo "    Код установщика: $RC"
 exit "$RC"

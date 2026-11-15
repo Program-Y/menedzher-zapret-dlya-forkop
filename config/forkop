@@ -236,7 +236,7 @@ torg.org'
 	list community_lists 'discord'
 	list community_lists 'telegram'
 	list community_lists 'cloudflare'
-	list rule_set '/etc/forkop/forkop_rules_ai.json'
+	list rule_set_with_subnets '/etc/forkop/forkop_rules_ai.json'
 
 config urltest
 	option section 'main_vpn'

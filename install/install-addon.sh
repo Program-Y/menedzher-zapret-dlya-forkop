@@ -35,4 +35,3 @@ rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null
 /etc/init.d/uhttpd restart 2>/dev/null || true
 
 echo "[+] Расширение установлено."
-echo "[i] Откройте LuCI → Services → Forkop + Zapret (Ctrl+F5)."
