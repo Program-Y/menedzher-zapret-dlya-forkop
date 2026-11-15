@@ -360,14 +360,15 @@ fi
 echo "[+] Forkop успешно установлен."
 
 # 5.1 — sing-box через штатный component_action Forkop (как кнопка в LuCI)
+# Всегда ставим полный extended (не compressed).
 if ask_yes_d "Установить sing-box (extended) через Forkop?"; then
     SINGBOX_ACTION="install_extended"
     FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
     if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
-        SINGBOX_ACTION="install_extended_compressed"
-        echo "[i] Свободно $((FREE_KB / 1024)) МБ на flash — использую extended compressed."
+        echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
+        echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
     fi
-    if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box ($SINGBOX_ACTION, Forkop)"; then
+    if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
         echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
     fi
 else
