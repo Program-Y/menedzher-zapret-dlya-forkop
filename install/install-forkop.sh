@@ -11,8 +11,12 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
 CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
 NEED_VPN_KEY=0
+DID_INSTALL_SINGBOX=0
+DID_INSTALL_ZAPRET=0
+DID_INSTALL_ADDON=0
+rm -f /tmp/forkop-zapret-install-addon
 
-ASK_SEP="-----------------------------------------------------------------------------------"
+ASK_SEP="------------------------------------------------------------"
 
 ask_yes() {
     [ "$ASSUME_YES" = "1" ] && return 0
@@ -255,6 +259,13 @@ echo "[+] Базовые требования выполнены."
 # ==================================================
 # ЭТАП 2: ПОЛНАЯ ЗАЧИСТКА СИСТЕМЫ (forkop, sing-box, zapret, podkop, расширение)
 # ==================================================
+echo "[-] Очистка временных файлов предыдущей установки..."
+rm -f /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk
+rm -f /tmp/forkop-zapret-install-addon /tmp/forkop-zapret-need-key
+rm -rf /tmp/sing-box-extended-x86 /tmp/sing-box-extended
+rm -rf /tmp/forkop_zapret
+rm -f /tmp/forkop-zapret-install/repo.tar.gz
+
 echo "[-] Принудительная остановка процессов..."
 killall -9 forkop sing-box xray nfqws 2>/dev/null
 sleep 1
@@ -375,7 +386,9 @@ if ask_yes_d "Установить sing-box (extended)?" "Будет скача�
     case "$ARCH" in
         x86_64)
             echo "[-] x86_64: Forkop не ставит sing-box — используется scripts/install-sing-box-extended-x86.sh"
-            if ! sh "$REPO_DIR/scripts/install-sing-box-extended-x86.sh"; then
+            if sh "$REPO_DIR/scripts/install-sing-box-extended-x86.sh"; then
+                DID_INSTALL_SINGBOX=1
+            else
                 echo "[!] Не удалось установить sing-box для x86_64."
             fi
             ;;
@@ -386,7 +399,9 @@ if ask_yes_d "Установить sing-box (extended)?" "Будет скача�
                 echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
                 echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
             fi
-            if ! forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
+            if forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
+                DID_INSTALL_SINGBOX=1
+            else
                 echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
             fi
             ;;
@@ -395,10 +410,17 @@ else
     echo "[i] sing-box не устанавливается (по желанию пользователя)."
 fi
 
-# 5.2 — zapret через Forkop, с ДОПОЛНИТЕЛЬНЫМ подтверждением
+# 5.2 — zapret через Forkop, затем (только при успехе) аддон zapret+forkop
 if ask_yes_d "Установить Zapret (DPI-обход) через Forkop?" "Будет установлен компонент Zapret через Forkop: nfqws, правила nftables и fake-файлы."; then
-    if ask_yes "Подтвердить установку компонента Zapret через Forkop?" "Повторное подтверждение: Zapret будет установлен и включён в Forkop."; then
-        if ! forkop_component zapret install "Установка компонента Zapret (Forkop)"; then
+    if ask_yes_d "Подтвердить установку компонента Zapret через Forkop?" "Повторное подтверждение: Zapret будет установлен и включён в Forkop."; then
+        if forkop_component zapret install "Установка компонента Zapret (Forkop)"; then
+            DID_INSTALL_ZAPRET=1
+            if ask_yes_d "Установить аддон zapret+forkop?" "Аддон zapret+forkop помогает подбирать стратегии для zapret: автоподбор по секциям, проверка доменов и ручной конструктор."; then
+                DID_INSTALL_ADDON=1
+            else
+                echo "[i] Аддон zapret+forkop не устанавливается."
+            fi
+        else
             echo "[!] Zapret не установился. Проверьте: logread -e forkop / forkop get_zapret_status"
         fi
     else
@@ -408,34 +430,42 @@ else
     echo "[i] Zapret не устанавливается."
 fi
 
-echo "[-] Скачивание fake-файлов для zapret..."
-mkdir -p /opt/zapret/files/fake
-BASE="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin"
-for f in stun.bin stun2.bin quic_initial_tencent_com.bin quic_initial_steamcommunity_com.bin tls_clienthello_sochi_park.bin quic_initial_4pda_to.bin quic_initial_5ka_ru.bin tls_clienthello_5ka_ru.bin quic_initial_rutube_ru.bin; do
-  download "$BASE/$f" "/opt/zapret/files/fake/$f" "fake-файл $f" || echo " [!] пропущен: $f"
-done
+if [ "$DID_INSTALL_ZAPRET" = "1" ]; then
+    echo "[-] Скачивание fake-файлов для zapret..."
+    mkdir -p /opt/zapret/files/fake
+    BASE="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin"
+    for f in stun.bin stun2.bin quic_initial_tencent_com.bin quic_initial_steamcommunity_com.bin tls_clienthello_sochi_park.bin quic_initial_4pda_to.bin quic_initial_5ka_ru.bin tls_clienthello_5ka_ru.bin quic_initial_rutube_ru.bin; do
+      download "$BASE/$f" "/opt/zapret/files/fake/$f" "fake-файл $f" || echo " [!] пропущен: $f"
+    done
+fi
 
-# 5.3 — авто-настройка из config/
+# 5.3 — авто-настройка из config/ (только если что-то установлено)
 if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
-    if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?" "Будут скопированы конфиг forkop, локальные наборы правил (включая forkop_rules_ai.json) и настройки расширения."; then
-        echo "[-] Применение конфигурации из $CONFIG_DIR ..."
-        mkdir -p /etc/forkop
-        cp "$CONFIG_DIR/forkop" /etc/config/forkop
-        [ -f "$CONFIG_DIR/forkop_zapret" ] && cp "$CONFIG_DIR/forkop_zapret" /etc/config/forkop_zapret
-        [ -f "$CONFIG_DIR/forkop_zapret.conf" ] && cp "$CONFIG_DIR/forkop_zapret.conf" /etc/forkop_zapret.conf
-        [ -f "$CONFIG_DIR/zapret" ] && cp "$CONFIG_DIR/zapret" /etc/config/zapret
-        [ -f "$CONFIG_DIR/sing-box" ] && cp "$CONFIG_DIR/sing-box" /etc/config/sing-box
-        [ -f "$CONFIG_DIR/forkop_rules_rus.json" ] && cp "$CONFIG_DIR/forkop_rules_rus.json" /etc/forkop/forkop_rules_rus.json
-        [ -f "$CONFIG_DIR/forkop_rules_ai.json" ] && cp "$CONFIG_DIR/forkop_rules_ai.json" /etc/forkop/forkop_rules_ai.json
-        for f in "$CONFIG_DIR"/*.srs; do
-            [ -f "$f" ] && cp "$f" /etc/forkop/
-        done
-        uci commit forkop 2>/dev/null
-        uci commit forkop_zapret 2>/dev/null
-        uci commit zapret 2>/dev/null
-        uci commit sing-box 2>/dev/null
-        echo "[+] Конфигурация применена."
-        NEED_VPN_KEY=1
+    if [ "$DID_INSTALL_SINGBOX" = "1" ] && [ "$DID_INSTALL_ZAPRET" = "1" ] && [ "$DID_INSTALL_ADDON" = "1" ]; then
+        if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?" "Будут скопированы конфиг forkop, локальные наборы правил (включая forkop_rules_ai.json) и настройки расширения."; then
+            echo "[-] Применение конфигурации из $CONFIG_DIR ..."
+            mkdir -p /etc/forkop
+            cp "$CONFIG_DIR/forkop" /etc/config/forkop
+            if [ "$DID_INSTALL_ADDON" = "1" ]; then
+                [ -f "$CONFIG_DIR/forkop_zapret" ] && cp "$CONFIG_DIR/forkop_zapret" /etc/config/forkop_zapret
+                [ -f "$CONFIG_DIR/forkop_zapret.conf" ] && cp "$CONFIG_DIR/forkop_zapret.conf" /etc/forkop_zapret.conf
+            fi
+            [ -f "$CONFIG_DIR/zapret" ] && cp "$CONFIG_DIR/zapret" /etc/config/zapret
+            [ -f "$CONFIG_DIR/sing-box" ] && cp "$CONFIG_DIR/sing-box" /etc/config/sing-box
+            [ -f "$CONFIG_DIR/forkop_rules_rus.json" ] && cp "$CONFIG_DIR/forkop_rules_rus.json" /etc/forkop/forkop_rules_rus.json
+            [ -f "$CONFIG_DIR/forkop_rules_ai.json" ] && cp "$CONFIG_DIR/forkop_rules_ai.json" /etc/forkop/forkop_rules_ai.json
+            for f in "$CONFIG_DIR"/*.srs; do
+                [ -f "$f" ] && cp "$f" /etc/forkop/
+            done
+            uci commit forkop 2>/dev/null
+            uci commit forkop_zapret 2>/dev/null
+            uci commit zapret 2>/dev/null
+            uci commit sing-box 2>/dev/null
+            echo "[+] Конфигурация применена."
+            NEED_VPN_KEY=1
+        fi
+    else
+        echo "[i] Не всё установлено (нужны sing-box + zapret + аддон) — конфигурация не запрашивается."
     fi
 else
     echo "[i] Каталог config/ не найден — авто-настройка пропущена."
@@ -473,6 +503,9 @@ rm -rf /tmp/luci-*
 rm -f /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk
 
 if [ "$FZ_WRAPPER" = "1" ]; then
+    if [ "$DID_INSTALL_ADDON" = "1" ]; then
+        touch /tmp/forkop-zapret-install-addon
+    fi
     if [ "$NEED_VPN_KEY" = "1" ]; then
         touch /tmp/forkop-zapret-need-key
     fi

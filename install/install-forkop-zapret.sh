@@ -9,8 +9,14 @@ echo "=================================================="
 echo "   Установка Forkop + расширение zapret+forkop"
 echo "=================================================="
 
+rm -f /tmp/forkop-zapret-install-addon
 FZ_WRAPPER=1 sh "$SCRIPT_DIR/install-forkop.sh"
-sh "$SCRIPT_DIR/install-addon.sh"
+if [ -f /tmp/forkop-zapret-install-addon ]; then
+    rm -f /tmp/forkop-zapret-install-addon
+    sh "$SCRIPT_DIR/install-addon.sh"
+else
+    echo "[i] Аддон zapret+forkop не устанавливается."
+fi
 
 if [ -f /tmp/forkop-zapret-need-key ]; then
     rm -f /tmp/forkop-zapret-need-key
