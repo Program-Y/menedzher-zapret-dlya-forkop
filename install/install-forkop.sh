@@ -10,6 +10,7 @@ echo "=================================================="
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
 CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
+NEED_VPN_KEY=0
 
 ask_yes() {
     [ "$ASSUME_YES" = "1" ] && return 0
@@ -406,6 +407,7 @@ if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
         [ -f "$CONFIG_DIR/zapret" ] && cp "$CONFIG_DIR/zapret" /etc/config/zapret
         [ -f "$CONFIG_DIR/sing-box" ] && cp "$CONFIG_DIR/sing-box" /etc/config/sing-box
         [ -f "$CONFIG_DIR/forkop_rules_rus.json" ] && cp "$CONFIG_DIR/forkop_rules_rus.json" /etc/forkop/forkop_rules_rus.json
+        [ -f "$CONFIG_DIR/forkop_rules_ai.json" ] && cp "$CONFIG_DIR/forkop_rules_ai.json" /etc/forkop/forkop_rules_ai.json
         for f in "$CONFIG_DIR"/*.srs; do
             [ -f "$f" ] && cp "$f" /etc/forkop/
         done
@@ -414,24 +416,43 @@ if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
         uci commit zapret 2>/dev/null
         uci commit sing-box 2>/dev/null
         echo "[+] Конфигурация применена."
-        echo "[i] VPN-подписка/ключи в конфиг НЕ входят — добавьте их в LuCI (Forkop → Connections)."
+        NEED_VPN_KEY=1
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║            ВАЖНО: ПЕРЕД ЗАПУСКОМ FORKOP                     ║"
+        echo "╠══════════════════════════════════════════════════════════════╣"
+        echo "║  В конфиге НЕТ ключа или подписки для секции main_vpn.      ║"
+        echo "║                                                              ║"
+        echo "║  1. Откройте LuCI → Forkop → Секции → main_vpn              ║"
+        echo "║  2. Добавьте подписку (URL) или ключ/ссылку на сервер        ║"
+        echo "║  3. Сохраните и запустите Forkop                            ║"
+        echo "║                                                              ║"
+        echo "║  Без этого sing-box не подключится и будет падать.          ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
     fi
 else
     echo "[i] Каталог config/ не найден — авто-настройка пропущена."
 fi
 
 # 5.4 — запуск с проверкой; автозапуск включаем только после успеха
-echo "[-] Запуск Forkop (автозапуск пока выключен)..."
-chmod +x /etc/init.d/forkop
-/etc/init.d/forkop disable 2>/dev/null
-/etc/init.d/forkop start
-sleep 8
-if ps 2>/dev/null | grep -v grep | grep -q 'sing-box run'; then
-    /etc/init.d/forkop enable 2>/dev/null
-    echo "[+] Forkop запущен, автозапуск включён."
+if [ "$NEED_VPN_KEY" = "1" ]; then
+    echo "[-] Автозапуск Forkop пока не включаю: сначала добавьте ключ/подписку в main_vpn."
+    echo "    После добавления запустите: /etc/init.d/forkop start"
+    /etc/init.d/forkop disable 2>/dev/null
 else
-    echo "[!] Forkop не запустился — автозапуск НЕ включён."
-    echo "    Проверьте: logread -e forkop"
+    echo "[-] Запуск Forkop (автозапуск пока выключен)..."
+    chmod +x /etc/init.d/forkop
+    /etc/init.d/forkop disable 2>/dev/null
+    /etc/init.d/forkop start
+    sleep 8
+    if ps 2>/dev/null | grep -v grep | grep -q 'sing-box run'; then
+        /etc/init.d/forkop enable 2>/dev/null
+        echo "[+] Forkop запущен, автозапуск включён."
+    else
+        echo "[!] Forkop не запустился — автозапуск НЕ включён."
+        echo "    Проверьте: logread -e forkop"
+    fi
 fi
 
 # ==================================================

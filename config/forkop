@@ -236,11 +236,7 @@ torg.org'
 	list community_lists 'discord'
 	list community_lists 'telegram'
 	list community_lists 'cloudflare'
-	list rule_set 'https://github.com/vernette/rulesets/raw/master/srs/gemini.srs'
-	list rule_set_with_subnets 'https://github.com/Repcz/Tool/raw/refs/heads/X/sing-box/Rules/AI.srs'
-	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/openai.srs'
-	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/claude.srs'
-	list rule_set_with_subnets 'https://github.com/vernette/rulesets/raw/master/srs/grok.srs'
+	list rule_set '/etc/forkop/forkop_rules_ai.json'
 
 config urltest
 	option section 'main_vpn'

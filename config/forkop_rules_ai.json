@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain_suffix": [
+        "openai.com",
+        "chatgpt.com",
+        "chat.com",
+        "oaistatic.com",
+        "oaiusercontent.com",
+        "sora.com",
+        "openai.org",
+        "openai.azure.com",
+        "openaiapi-site.azureedge.net",
+        "openaicomproductionae4b.blob.core.windows.net",
+        "production-openaicom-storage.azureedge.net",
+        "chatgpt.livekit.cloud",
+        "anthropic.com",
+        "claude.ai",
+        "claude.com",
+        "claudeusercontent.com",
+        "gemini.google.com",
+        "aistudio.google.com",
+        "makersuite.google.com",
+        "generativelanguage.googleapis.com",
+        "bard.google.com",
+        "deepmind.google",
+        "deepmind.com",
+        "grok.com",
+        "x.ai",
+        "api.x.ai",
+        "grok.x.ai",
+        "cursor.com",
+        "cursor.sh",
+        "cursor.so",
+        "api.cursor.com",
+        "api2.cursor.sh",
+        "download.cursor.sh",
+        "cursor-cdn.com"
+      ]
+    }
+  ]
+}
