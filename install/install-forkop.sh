@@ -12,9 +12,15 @@ REPO_DIR=$(dirname "$SCRIPT_DIR")
 CONFIG_DIR="${CONFIG_DIR:-$REPO_DIR/config}"
 NEED_VPN_KEY=0
 
+ASK_SEP="-----------------------------------------------------------------------------------"
+
 ask_yes() {
     [ "$ASSUME_YES" = "1" ] && return 0
-    printf "%s [y/N]: " "$1"
+    echo ""
+    echo "$ASK_SEP"
+    echo "${2:-$1}"
+    echo "$ASK_SEP"
+    printf "%s(По умолчанию N)(y/n): " "$1"
     if [ -r /dev/tty ]; then
         read ans < /dev/tty
     else
@@ -25,7 +31,11 @@ ask_yes() {
 
 ask_yes_d() {
     [ "$ASSUME_YES" = "1" ] && return 0
-    printf "%s [Y/n]: " "$1"
+    echo ""
+    echo "$ASK_SEP"
+    echo "${2:-$1}"
+    echo "$ASK_SEP"
+    printf "%s(По умолчанию Y)(y/n): " "$1"
     if [ -r /dev/tty ]; then
         read ans < /dev/tty
     else
@@ -361,7 +371,7 @@ fi
 echo "[+] Forkop успешно установлен."
 
 # 5.1 — sing-box extended: x86_64 — отдельный установщик, остальные — через Forkop
-if ask_yes_d "Установить sing-box (extended)?"; then
+if ask_yes_d "Установить sing-box (extended)?" "Будет скачан и установлен полный sing-box extended (~100 МБ). Если ответить n — sing-box не устанавливается."; then
     case "$ARCH" in
         x86_64)
             echo "[-] x86_64: Forkop не ставит sing-box — используется scripts/install-sing-box-extended-x86.sh"
@@ -386,8 +396,8 @@ else
 fi
 
 # 5.2 — zapret через Forkop, с ДОПОЛНИТЕЛЬНЫМ подтверждением
-if ask_yes_d "Установить Zapret (DPI-обход) через Forkop?"; then
-    if ask_yes "Подтвердить установку компонента Zapret через Forkop?"; then
+if ask_yes_d "Установить Zapret (DPI-обход) через Forkop?" "Будет установлен компонент Zapret через Forkop: nfqws, правила nftables и fake-файлы."; then
+    if ask_yes "Подтвердить установку компонента Zapret через Forkop?" "Повторное подтверждение: Zapret будет установлен и включён в Forkop."; then
         if ! forkop_component zapret install "Установка компонента Zapret (Forkop)"; then
             echo "[!] Zapret не установился. Проверьте: logread -e forkop / forkop get_zapret_status"
         fi
@@ -407,7 +417,7 @@ done
 
 # 5.3 — авто-настройка из config/
 if [ -d "$CONFIG_DIR" ] && [ -f "$CONFIG_DIR/forkop" ]; then
-    if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?"; then
+    if ask_yes_d "Применить сохранённую конфигурацию (forkop + локальные списки)?" "Будут скопированы конфиг forkop, локальные наборы правил (включая forkop_rules_ai.json) и настройки расширения."; then
         echo "[-] Применение конфигурации из $CONFIG_DIR ..."
         mkdir -p /etc/forkop
         cp "$CONFIG_DIR/forkop" /etc/config/forkop
