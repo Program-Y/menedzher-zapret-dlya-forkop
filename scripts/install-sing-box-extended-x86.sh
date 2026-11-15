@@ -60,11 +60,22 @@ rm -rf "$TMP"
 mkdir -p "$TMP"
 
 echo "[-] Скачивание..."
+DL_OK=0
 if command -v curl >/dev/null 2>&1; then
-    curl -4 -fL --connect-timeout 10 --max-time 300 --retry 2 -o "$TMP/sb.tar.gz" "$URL" || fail "curl: ошибка скачивания"
-else
-    wget -T 30 -O "$TMP/sb.tar.gz" "$URL" || fail "wget: ошибка скачивания"
+    if curl -4 -fL --connect-timeout 10 --max-time 300 --retry 2 -o "$TMP/sb.tar.gz" "$URL"; then
+        DL_OK=1
+    else
+        echo "[!] curl: ошибка скачивания, пробую wget..."
+    fi
 fi
+if [ "$DL_OK" = "0" ] && command -v wget >/dev/null 2>&1; then
+    if wget -T 30 -O "$TMP/sb.tar.gz" "$URL"; then
+        DL_OK=1
+    else
+        echo "[!] wget: ошибка скачивания"
+    fi
+fi
+[ "$DL_OK" = "1" ] || fail "Не удалось скачать sing-box-extended."
 SIZE=$(wc -c < "$TMP/sb.tar.gz" 2>/dev/null)
 echo "    Размер: $SIZE байт"
 [ -s "$TMP/sb.tar.gz" ] || fail "Скачанный файл пуст."
