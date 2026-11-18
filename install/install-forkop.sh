@@ -252,33 +252,23 @@ cleanup_network_leftovers() {
     fi
 }
 
-# --- Утилита расширения RAM за счёт ROM: swap-utils + swapfile 64 МБ ---
+# --- Утилита расширения RAM: zram-swap (сжатый swap в RAM) ---
 install_ram_expander() {
-    echo "[-] Установка утилиты расширения RAM (swap-utils + swapfile 64 МБ)..."
-    opkg install swap-utils 2>/dev/null || true
-    if [ -f /swapfile ]; then
-        echo "[i] swapfile уже существует — включаю."
-        swapon /swapfile 2>/dev/null || true
-        return 0
-    fi
-    FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
-    if [ "${FREE_KB:-0}" -lt 102400 ]; then
-        echo "[!] Мало места для swapfile 64 МБ (нужно ~100 МБ свободно)."
-        echo "    swap-utils установлен, swapfile не создан."
+    echo "[-] Установка zram-swap (расширение RAM)..."
+    opkg install zram-swap 2>/dev/null || true
+    if [ ! -x /etc/init.d/zram ]; then
+        echo "[!] Пакет zram-swap не установился (нет /etc/init.d/zram)."
         return 1
     fi
-    dd if=/dev/zero of=/swapfile bs=1M count=64 2>/dev/null || return 1
-    chmod 600 /swapfile
-    mkswap /swapfile >/dev/null 2>&1 || { rm -f /swapfile; return 1; }
-    swapon /swapfile 2>/dev/null || return 1
-    if [ -f /etc/rc.local ]; then
-        grep -q '/swapfile' /etc/rc.local || sed -i '/^exit 0/i [ -f /swapfile ] \&\& swapon /swapfile 2>/dev/null' /etc/rc.local
-    else
-        echo '[ -f /swapfile ] && swapon /swapfile 2>/dev/null' > /etc/rc.local
-        chmod +x /etc/rc.local
+    /etc/init.d/zram enable 2>/dev/null || true
+    /etc/init.d/zram start 2>/dev/null || true
+    sleep 1
+    if grep -q 'zram' /proc/swaps 2>/dev/null; then
+        echo "[+] zram-swap включён (сжатый swap в RAM)."
+        return 0
     fi
-    echo "[+] swapfile 64 МБ создан и включён."
-    return 0
+    echo "[!] zram-swap установлен, но swap не активен — проверьте /etc/init.d/zram start."
+    return 1
 }
 
 # ==================================================
