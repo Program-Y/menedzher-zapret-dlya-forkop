@@ -413,6 +413,16 @@ rm -rf /etc/config/sing-box /etc/sing-box /etc/init.d/sing-box /usr/bin/sing-box
 rm -rf /opt/zapret /etc/zapret /etc/config/zapret /etc/init.d/zapret
 rm -rf /etc/config/podkop /etc/podkop
 
+echo "[-] Удаление остатков sing-box (EikeiDev extended и др.)..."
+rm -rf /usr/libexec/sing-box-core /usr/libexec/sing-box /usr/bin/sing-box
+rm -rf /opt/sing-box /usr/share/sing-box /usr/lib/sing-box
+rm -rf /root/sing-box-install /tmp/sing-box-install /tmp/sing-box-install.*
+rm -f /etc/sing-box-version.cache /usr/bin/.sing-box.tmp.*
+rm -f /etc/forkop/sing-box-variant /etc/forkop/sing-box-version
+rm -rf /etc/forkop/backup /etc/forkop/backup-* /etc/forkop/*.backup
+rm -rf /tmp/forkop-sing-box* /tmp/sing-box-backup*
+opkg clean 2>/dev/null
+
 cleanup_network_leftovers
 echo "[+] Система очищена."
 fi
@@ -557,6 +567,7 @@ while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
         DID_INSTALL_SINGBOX=1
     else
         echo "[!] sing-box не установился."
+        echo "[i] Если мало места: rm -rf /usr/libexec/sing-box-core /root/sing-box-install /tmp/sing-box-install; opkg clean"
         if [ "$ASSUME_YES" = "1" ]; then
             echo "[x] Установка sing-box не удалась — остановка (ASSUME_YES)."
             exit 1
