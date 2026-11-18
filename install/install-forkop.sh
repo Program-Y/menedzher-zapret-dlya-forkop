@@ -15,6 +15,11 @@ DID_INSTALL_SINGBOX=0
 DID_INSTALL_ZAPRET=0
 DID_INSTALL_ADDON=0
 rm -f /tmp/forkop-zapret-install-addon
+CLEAN_ONLY=0
+SKIP_CLEAN="${FZ_SKIP_CLEAN:-0}"
+case "${1:-}" in
+    --clean-only|clean) CLEAN_ONLY=1 ;;
+esac
 
 ASK_SEP="------------------------------------------------------------"
 
@@ -250,36 +255,40 @@ cleanup_network_leftovers() {
 # --- Замена tiny/stable на extended из файла, снятого с 192.168.2.1 (aarch64) ---
 install_extended_from_repo() {
     echo "[-] Установка extended из репозитория (aarch64)..."
-    REPO_EXT_URL="https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/assets/sing-box-extended-aarch64.gz"
     TMP_GZ="/tmp/sing-box-extended-repo.gz"
-    TMP_BIN="/tmp/sing-box-extended-repo"
-    rm -f "$TMP_GZ" "$TMP_BIN"
-    if command -v curl >/dev/null 2>&1; then
-        curl -4 -fL --connect-timeout 10 --max-time 1800 --retry 2 -o "$TMP_GZ" "$REPO_EXT_URL" || return 1
+    rm -f "$TMP_GZ"
+    if [ -f "$REPO_DIR/assets/sing-box-extended-aarch64.gz" ]; then
+        echo "[i] Использую локальный ассет из архива репозитория."
+        TMP_GZ="$REPO_DIR/assets/sing-box-extended-aarch64.gz"
     else
-        wget -T 30 -O "$TMP_GZ" "$REPO_EXT_URL" || return 1
+        REPO_EXT_URL="https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/assets/sing-box-extended-aarch64.gz"
+        if command -v curl >/dev/null 2>&1; then
+            curl -4 -fL --connect-timeout 10 --max-time 1800 --retry 2 -o "$TMP_GZ" "$REPO_EXT_URL" || return 1
+        else
+            wget -T 30 -O "$TMP_GZ" "$REPO_EXT_URL" || return 1
+        fi
     fi
     [ -s "$TMP_GZ" ] || return 1
-    gzip -dc "$TMP_GZ" > "$TMP_BIN" 2>/dev/null || return 1
-    [ -s "$TMP_BIN" ] || return 1
 
     /etc/init.d/sing-box stop 2>/dev/null
     /etc/init.d/forkop stop 2>/dev/null
     killall sing-box 2>/dev/null
-    cp /usr/bin/sing-box /tmp/sing-box.prev 2>/dev/null
-    cp "$TMP_BIN" /usr/bin/sing-box || { rm -f "$TMP_GZ" "$TMP_BIN"; return 1; }
+    echo "[i] Удаляю старый sing-box и распаковываю extended..."
+    rm -f /usr/bin/sing-box
+    gzip -dc "$TMP_GZ" > /usr/bin/sing-box 2>/dev/null || { rm -f /usr/bin/sing-box; return 1; }
     chmod +x /usr/bin/sing-box
     if ! /usr/bin/sing-box version >/dev/null 2>&1; then
-        echo "[!] extended не запускается — возвращаю прежний бинарник."
-        [ -f /tmp/sing-box.prev ] && cp /tmp/sing-box.prev /usr/bin/sing-box
-        rm -f "$TMP_GZ" "$TMP_BIN" /tmp/sing-box.prev
+        echo "[!] extended не запускается — удаляю; переустановите версию через Forkop."
+        rm -f /usr/bin/sing-box
         return 1
     fi
     mkdir -p /etc/forkop
     echo "extended" > /etc/forkop/sing-box-variant
     VER=$(/usr/bin/sing-box version 2>/dev/null | head -n1 | awk '{print $NF}')
     [ -n "$VER" ] && echo "$VER" > /etc/forkop/sing-box-version
-    rm -f "$TMP_GZ" "$TMP_BIN" /tmp/sing-box.prev
+    if [ "$TMP_GZ" = "/tmp/sing-box-extended-repo.gz" ]; then
+        rm -f "$TMP_GZ"
+    fi
     echo "[+] extended из репозитория установлен: $VER"
     return 0
 }
@@ -365,6 +374,9 @@ echo "[+] Базовые требования выполнены."
 # ==================================================
 # ЭТАП 2: ПОЛНАЯ ЗАЧИСТКА СИСТЕМЫ (forkop, sing-box, zapret, podkop, расширение)
 # ==================================================
+if [ "$SKIP_CLEAN" = "1" ]; then
+    echo "[i] Очистка уже выполнена — пропускаю Этап 2."
+else
 echo "[-] Очистка временных файлов предыдущей установки..."
 rm -f /tmp/forkop.ipk /tmp/luci-app-forkop.ipk /tmp/luci-i18n-forkop-ru.ipk
 rm -f /tmp/forkop-zapret-install-addon /tmp/forkop-zapret-need-key
@@ -403,6 +415,13 @@ rm -rf /etc/config/podkop /etc/podkop
 
 cleanup_network_leftovers
 echo "[+] Система очищена."
+fi
+
+if [ "$CLEAN_ONLY" = "1" ]; then
+    FREE_FLASH_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}' || df -k / | awk 'NR==2 {print $4}')
+    echo "[+] Очистка завершена. Свободно на Flash: $(( ${FREE_FLASH_KB:-0} / 1024 )) МБ."
+    exit 0
+fi
 
 # ==================================================
 # ЭТАП 3: ПРОВЕРКА СВОБОДНЫХ РЕСУРСОВ (ПОСЛЕ ЧИСТКИ)
@@ -410,12 +429,12 @@ echo "[+] Система очищена."
 echo "[-] Проверка свободных ресурсов после очистки..."
 
 FREE_FLASH_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}' || df -k / | awk 'NR==2 {print $4}')
-if [ "$FREE_FLASH_KB" -lt 15360 ]; then
+if [ "${FREE_FLASH_KB:-0}" -lt 10240 ]; then
     echo "[x] ОШИБКА: Недостаточно свободного места для установки."
-    echo "    Требуется: 15 МБ. Доступно: $((FREE_FLASH_KB / 1024)) МБ."
+    echo "    Требуется: 10 МБ. Доступно: $(( ${FREE_FLASH_KB:-0} / 1024 )) МБ."
     exit 1
 fi
-echo " -> Свободно на Flash: $((FREE_FLASH_KB / 1024)) МБ (OK)"
+echo " -> Свободно на Flash: $(( ${FREE_FLASH_KB:-0} / 1024 )) МБ (OK)"
 
 FREE_RAM_KB=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
 if [ "$FREE_RAM_KB" -lt 32768 ]; then
@@ -586,12 +605,17 @@ else
 fi
 
 if [ "$DID_INSTALL_ZAPRET" = "1" ]; then
-    echo "[-] Скачивание fake-файлов для zapret..."
-    mkdir -p /opt/zapret/files/fake
+    echo "[-] Скачивание fake-файлов для zapret (в /tmp)..."
+    FAKE_TMP="/tmp/zapret-fake"
+    rm -rf "$FAKE_TMP"
+    mkdir -p "$FAKE_TMP"
     BASE="https://github.com/Flowseal/zapret-discord-youtube/raw/refs/heads/main/bin"
     for f in stun.bin stun2.bin quic_initial_tencent_com.bin quic_initial_steamcommunity_com.bin tls_clienthello_sochi_park.bin quic_initial_4pda_to.bin quic_initial_5ka_ru.bin tls_clienthello_5ka_ru.bin quic_initial_rutube_ru.bin; do
-      download "$BASE/$f" "/opt/zapret/files/fake/$f" "fake-файл $f" || echo " [!] пропущен: $f"
+      download "$BASE/$f" "$FAKE_TMP/$f" "fake-файл $f" || echo " [!] пропущен: $f"
     done
+    mkdir -p /opt/zapret/files/fake
+    cp -f "$FAKE_TMP"/* /opt/zapret/files/fake/ 2>/dev/null
+    rm -rf "$FAKE_TMP"
 fi
 
 # 5.3 — авто-настройка из config/ (только если что-то установлено)

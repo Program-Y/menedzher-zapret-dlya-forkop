@@ -15,6 +15,8 @@ REPO_NAME="${REPO_NAME:-menedzher-zapret-dlya-forkop}"
 BRANCH="${BRANCH:-main}"
 ARCHIVE="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${BRANCH}"
 TMP="/tmp/forkop-zapret-install"
+CLEAN_ONLY=0
+[ "${1:-}" = "clean" ] && CLEAN_ONLY=1
 
 step() {
     echo ""
@@ -91,6 +93,16 @@ fi
 echo "    Каталог: $DIR"
 echo "    Содержимое:"
 ls -l "$DIR" | head -n 12
+rm -f "$TMP/repo.tar.gz"
+
+if [ "$CLEAN_ONLY" = "1" ]; then
+    step "5/6" "Очистка (без установки)"
+    echo "    Команда: sh install/clean-forkop.sh"
+    cd "$DIR" || { echo "    [x] Не удалось перейти в $DIR"; exit 1; }
+    sh install/clean-forkop.sh
+    RC=$?
+    exit "$RC"
+fi
 
 step "5/6" "Запуск установщика"
 echo "    Команда: sh install/install-forkop-zapret.sh"
