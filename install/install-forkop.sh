@@ -178,6 +178,75 @@ forkop_component() {
     return 1
 }
 
+# --- Очистка остатков Zapret-Manager и проверка nftables/сети ---
+cleanup_network_leftovers() {
+    echo "[-] Удаление остатков Zapret-Manager и других надстроек..."
+    for s in zapret zapret2 tg-ws-proxy-go tg-ws-proxy-rs zapret-manager; do
+        [ -x "/etc/init.d/$s" ] && /etc/init.d/$s stop 2>/dev/null
+        [ -x "/etc/init.d/$s" ] && /etc/init.d/$s disable 2>/dev/null
+    done
+    if [ -f /etc/zm-steer/owned ]; then
+        for s in steer splify2; do
+            [ -x "/etc/init.d/$s" ] && /etc/init.d/$s stop 2>/dev/null
+            [ -x "/etc/init.d/$s" ] && /etc/init.d/$s disable 2>/dev/null
+        done
+        opkg remove --force-depends steer splify2 2>/dev/null
+    fi
+    rm -f /usr/bin/zms /usr/bin/zmsA /usr/bin/zmw
+    rm -rf /opt/zapret2 /opt/zapret_backup /opt/zapret-manager-luci /opt/zapret-manager*
+    rm -f /etc/config/zapret2 /etc/init.d/zapret2
+    rm -f /usr/libexec/rpcd/zapret-manager /etc/zapret_manager_expert_mode
+    opkg remove --force-depends luci-app-zapret-manager 2>/dev/null
+    rm -rf /www/luci-static/resources/view/zapret-manager
+    rm -f /usr/share/luci/menu.d/luci-app-zapret-manager.json /usr/share/rpcd/acl.d/luci-app-zapret-manager.json
+    rm -rf /etc/tg-ws-proxy /tmp/zapret_temp /tmp/zapret-manager-luci /tmp/zm_luci_latest /tmp/PodkopAWG
+    rm -f /usr/bin/tg-ws-proxy-go /usr/bin/tg-ws-proxy-rs /usr/bin/tg-ws-proxy-go_ver /usr/bin/tg-ws-proxy-rs_ver
+    rm -f /etc/init.d/tg-ws-proxy-go /etc/init.d/tg-ws-proxy-rs /etc/byedpi_dns_localuse
+    if [ -f /etc/zm-steer/owned ]; then
+        rm -rf /etc/zm-steer /etc/steer* /etc/config/steer* /etc/config/splify2*
+        rm -f /etc/init.d/steer /etc/init.d/splify2
+    fi
+    sed -i '/zapret-manager\|Zapret-Manager\|zmsA\|steer\|splify2\|tg-ws-proxy/d' /etc/crontabs/root 2>/dev/null
+    sed -i '/zapret-manager\|Zapret-Manager\|zmsA\|steer\|splify2\|tg-ws-proxy/d' /etc/rc.local 2>/dev/null
+
+    echo "[-] Проверка nftables и сетевых настроек..."
+    for t in zapret zapret2 podkop forkop ForkopTable byedpi steer splify2 zmwarp; do
+        for fam in inet ip ip6; do
+            nft delete table "$fam" "$t" 2>/dev/null
+        done
+    done
+    ip rule show 2>/dev/null | awk -F: '/lookup (forkop|podkop|zapret|zapret2|byedpi|steer|splify2)/ {print $1}' | while read -r prio; do
+        [ -n "$prio" ] && ip rule del priority "$prio" 2>/dev/null
+    done
+    for tbl in 100 105 200 300; do
+        ip route flush table "$tbl" 2>/dev/null
+    done
+    rm -f /etc/nftables.d/zapret.nft /etc/nftables.d/zapret2.nft /etc/nftables.d/podkop.nft /etc/nftables.d/byedpi.nft 2>/dev/null
+
+    if [ "$(uci -q get dhcp.@dnsmasq[0].server)" = "127.0.0.42" ]; then
+        uci -q delete dhcp.@dnsmasq[0].server
+    fi
+    uci -q delete dhcp.@dnsmasq[0].podkop_noresolv
+    uci -q delete dhcp.@dnsmasq[0].podkop_cachesize
+    if [ "$(uci -q get dhcp.@dnsmasq[0].noresolv)" = "1" ]; then
+        uci set dhcp.@dnsmasq[0].noresolv='0'
+    fi
+    uci commit dhcp 2>/dev/null
+
+    if nft list ruleset >/dev/null 2>&1; then
+        echo "[+] nftables читается"
+    else
+        echo "[!] nftables вернул ошибку — проверьте правила вручную"
+    fi
+    if command -v fw4 >/dev/null 2>&1; then
+        if fw4 check >/dev/null 2>&1; then
+            echo "[+] fw4 check: OK"
+        else
+            echo "[!] fw4 check: есть ошибки в firewall"
+        fi
+    fi
+}
+
 # ==================================================
 # ЭТАП 0: ПРОВЕРКА ЦЕЛОСТНОСТИ СИСТЕМНЫХ ФАЙЛОВ
 # ==================================================
@@ -267,7 +336,7 @@ rm -rf /tmp/forkop_zapret
 rm -f /tmp/forkop-zapret-install/repo.tar.gz
 
 echo "[-] Принудительная остановка процессов..."
-killall -9 forkop sing-box xray nfqws 2>/dev/null
+killall -9 forkop sing-box xray nfqws zapret zapret2 nfqws2 tg-ws-proxy-go tg-ws-proxy-rs 2>/dev/null
 sleep 1
 
 echo "[-] Удаление симлинков автозапуска..."
@@ -294,6 +363,8 @@ rm -rf /etc/config/forkop /etc/config/forkop.* /etc/forkop /usr/share/sing-box-f
 rm -rf /etc/config/sing-box /etc/sing-box /etc/init.d/sing-box /usr/bin/sing-box
 rm -rf /opt/zapret /etc/zapret /etc/config/zapret /etc/init.d/zapret
 rm -rf /etc/config/podkop /etc/podkop
+
+cleanup_network_leftovers
 echo "[+] Система очищена."
 
 # ==================================================
@@ -343,6 +414,7 @@ echo "[-] Установка зависимостей..."
 opkg install luci-compat
 opkg install luci-i18n-base-ru luci-i18n-ttyd-ru
 opkg install libc ca-bundle kmod-inet-diag kmod-netlink-diag kmod-tun curl libcurl4 ucode ucode-mod-fs ucode-mod-uci kmod-nft-tproxy coreutils-base64 bind-dig bind-libs nftables kmod-nft-nat kmod-nft-queue ip-full jsonfilter kmod-veth
+cleanup_network_leftovers
 
 echo "[-] Проверка, что зависимости установились настоящими файлами..."
 if ! verify_critical; then
@@ -381,33 +453,49 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — sing-box extended: x86_64 — отдельный установщик, остальные — через Forkop
-if ask_yes_d "Установить sing-box (extended)?" "Будет скачан и установлен полный sing-box extended (~100 МБ). Если ответить n — sing-box не устанавливается."; then
-    case "$ARCH" in
-        x86_64)
-            echo "[-] x86_64: Forkop не ставит sing-box — используется scripts/install-sing-box-extended-x86.sh"
-            if sh "$REPO_DIR/scripts/install-sing-box-extended-x86.sh"; then
-                DID_INSTALL_SINGBOX=1
-            else
-                echo "[!] Не удалось установить sing-box для x86_64."
-            fi
-            ;;
-        *)
-            SINGBOX_ACTION="install_extended"
-            FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
-            if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
-                echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
-                echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
-            fi
-            if forkop_component sing_box "$SINGBOX_ACTION" "Установка sing-box (extended, Forkop)"; then
-                DID_INSTALL_SINGBOX=1
-            else
-                echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
-            fi
-            ;;
-    esac
+# 5.1 — выбор версии sing-box (установка только средствами Forkop)
+SB_ACTION=""
+if [ "$ASSUME_YES" = "1" ]; then
+    SB_ACTION="install_extended"
+    echo "[i] ASSUME_YES: выбран sing-box extended."
 else
-    echo "[i] sing-box не устанавливается (по желанию пользователя)."
+    echo ""
+    echo "$ASK_SEP"
+    echo "Выберите версию sing-box (установка через Forkop):"
+    echo "  1) tiny"
+    echo "  2) stable"
+    echo "  3) extended"
+    echo "  0) не устанавливать"
+    echo "$ASK_SEP"
+    printf "Версия (1/2/3/0, по умолчанию 3 extended): "
+    if [ -r /dev/tty ]; then
+        read -r sb_choice < /dev/tty
+    else
+        read -r sb_choice
+    fi
+    case "$sb_choice" in
+        0) SB_ACTION="" ;;
+        1) SB_ACTION="install_tiny" ;;
+        2) SB_ACTION="install_stable" ;;
+        3|"") SB_ACTION="install_extended" ;;
+        *) echo "[!] Неверный выбор — используется extended."; SB_ACTION="install_extended" ;;
+    esac
+fi
+if [ -n "$SB_ACTION" ]; then
+    if [ "$SB_ACTION" = "install_extended" ]; then
+        FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
+        if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
+            echo "[!] Внимание: свободно $((FREE_KB / 1024)) МБ на flash."
+            echo "    Полный extended (~100 МБ) может не поместиться — установка может упасть по месту."
+        fi
+    fi
+    if forkop_component sing_box "$SB_ACTION" "Установка sing-box ($SB_ACTION, Forkop)"; then
+        DID_INSTALL_SINGBOX=1
+    else
+        echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
+    fi
+else
+    echo "[i] sing-box не устанавливается."
 fi
 
 # 5.2 — zapret через Forkop, затем (только при успехе) аддон zapret+forkop
