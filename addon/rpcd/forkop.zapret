@@ -68,6 +68,15 @@ apply_section_cron() {
         daily3)  expr="0 3 * * *" ;;
         daily5)  expr="0 5 * * *" ;;
     esac
+    if [ "$sched" = "custom" ]; then
+        local t=$(uci -q get "forkop_zapret.cfg_${slug}.auto_update_time" 2>/dev/null)
+        local d=$(uci -q get "forkop_zapret.cfg_${slug}.auto_update_days" 2>/dev/null)
+        local hh="${t%%:*}"; local mm="${t##*:}"
+        case "$hh" in ''|*[!0-9]*) hh=3 ;; esac
+        case "$mm" in ''|*[!0-9]*) mm=0 ;; esac
+        [ -z "$d" ] && d="*"
+        expr="$mm $hh * * $d"
+    fi
     sed -i "/forkop_zapret_sched_${slug}/d" /etc/crontabs/root
     if [ -n "$expr" ]; then
         echo "$expr /bin/sh $RUNNER --run '$sec' '${auto:-1}' 1 # forkop_zapret_sched_${slug}" >> /etc/crontabs/root
@@ -109,6 +118,8 @@ build_section_json() {
     local ac=$(uci -q get "forkop_zapret.cfg_${slug}.all_combos" 2>/dev/null);        [ -z "$ac" ] && ac=0
     local aa=$(uci -q get "forkop_zapret.cfg_${slug}.auto_apply" 2>/dev/null);        [ -z "$aa" ] && aa=1
     local cs=$(uci -q get "forkop_zapret.cfg_${slug}.cron_schedule" 2>/dev/null);     [ -z "$cs" ] && cs=off
+    local aut=$(uci -q get "forkop_zapret.cfg_${slug}.auto_update_time" 2>/dev/null); [ -z "$aut" ] && aut=03:00
+    local aud=$(uci -q get "forkop_zapret.cfg_${slug}.auto_update_days" 2>/dev/null); [ -z "$aud" ] && aud='*'
     local dp=$(uci -q get "forkop_zapret.cfg_${slug}.dns_proto" 2>/dev/null);         [ -z "$dp" ] && dp=doh
     local ds=$(uci -q get "forkop_zapret.cfg_${slug}.dns_server" 2>/dev/null);        [ -z "$ds" ] && ds=8.8.8.8
     local vs=$(uci -q get "forkop_zapret.cfg_${slug}.vpn_section" 2>/dev/null);       [ -z "$vs" ] && vs=none
@@ -122,8 +133,31 @@ build_section_json() {
     [ -z "$dsv" ] && dsv="${dp}|${ds}"
     dsv=$(echo "$dsv" | tr ' ' ';')
     dsv=$(jesc "$dsv")
-    printf '{"enabled":"%s","strat_cats":"%s","all_combos":"%s","auto_apply":"%s","cron_schedule":"%s","dns_proto":"%s","dns_server":"%s","dns_servers":"%s","vpn_section":"%s","only_strat_update":"%s","disable_updates":"%s","include_zm_domains":"%s","custom_strategy":"%s","follow_enabled":"%s","follow_from":"%s"}' \
-        "$en" "$sc" "$ac" "$aa" "$cs" "$dp" "$ds" "$dsv" "$vs" "$os" "$du" "$iz" "$cstr" "$fe" "$ff"
+    printf '{"enabled":"%s","strat_cats":"%s","all_combos":"%s","auto_apply":"%s","cron_schedule":"%s","auto_update_time":"%s","auto_update_days":"%s","dns_proto":"%s","dns_server":"%s","dns_servers":"%s","vpn_section":"%s","only_strat_update":"%s","disable_updates":"%s","include_zm_domains":"%s","custom_strategy":"%s","follow_enabled":"%s","follow_from":"%s"}' \
+        "$en" "$sc" "$ac" "$aa" "$cs" "$aut" "$aud" "$dp" "$ds" "$dsv" "$vs" "$os" "$du" "$iz" "$cstr" "$fe" "$ff"
+}
+
+do_update() {
+    local tmp="/tmp/forkop-zapret-update"
+    local url="https://codeload.github.com/Program-Y/menedzher-zapret-dlya-forkop/tar.gz/refs/heads/main"
+    rm -rf "$tmp"; mkdir -p "$tmp"
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O "$tmp/repo.tar.gz" "$url" 2>/dev/null || { echo '{"ok":false,"error":"download"}'; return; }
+    else
+        curl -fsSL -o "$tmp/repo.tar.gz" "$url" 2>/dev/null || { echo '{"ok":false,"error":"download"}'; return; }
+    fi
+    tar -xzf "$tmp/repo.tar.gz" -C "$tmp" 2>/dev/null || { echo '{"ok":false,"error":"extract"}'; return; }
+    local dir=$(find "$tmp" -maxdepth 1 -type d -name 'menedzher-*' | head -n1)
+    [ -z "$dir" ] && { echo '{"ok":false,"error":"no dir"}'; return; }
+    FZ_ADDON_UPDATE=1 sh "$dir/install/install-addon.sh" >/tmp/forkop-zapret-update.log 2>&1
+    local rc=$?
+    rm -rf "$tmp"
+    ( sleep 2; /etc/init.d/rpcd restart; /etc/init.d/uhttpd restart ) >/dev/null 2>&1 &
+    if [ "$rc" -eq 0 ]; then
+        echo '{"ok":true}'
+    else
+        echo '{"ok":false,"error":"install failed"}'
+    fi
 }
 
 case "$1" in
@@ -140,7 +174,7 @@ case "$1" in
             },
             "save_section_settings": {
                 "section": "str", "enabled": "str", "strat_cats": "str", "all_combos": "str",
-                "auto_apply": "str", "cron_schedule": "str", "dns_proto": "str", "dns_server": "str",
+                "auto_apply": "str", "cron_schedule": "str", "auto_update_time": "str", "auto_update_days": "str", "dns_proto": "str", "dns_server": "str",
                 "vpn_section": "str", "only_strat_update": "str", "disable_updates": "str",
                 "include_zm_domains": "str", "custom_strategy": "str", "follow_enabled": "str", "follow_from": "str",
                 "dns_servers": "str"
@@ -154,6 +188,7 @@ case "$1" in
             "check_forkop": { "sections": "str", "domain": "str" },
             "get_check_log": { "offset": 0 },
             "stop_check": {},
+            "update": {},
             "apply_custom": {
                 "sections": "str", "name": "str", "strategy": "str", "builder_state": "str"
             }
@@ -161,6 +196,9 @@ case "$1" in
         ;;
     call)
         case "$2" in
+            update)
+                do_update
+                ;;
             get_state)
                 . "$CONF_FILE" 2>/dev/null
 
@@ -288,7 +326,7 @@ EOF
                 uci -q delete "forkop_zapret.cfg_${slug}" 2>/dev/null
                 uci -q set "forkop_zapret.cfg_${slug}=section_settings"
                 uci -q set "forkop_zapret.cfg_${slug}.section_name=$sec"
-                for _k in enabled strat_cats all_combos auto_apply cron_schedule dns_proto dns_server vpn_section only_strat_update disable_updates include_zm_domains custom_strategy follow_enabled follow_from; do
+                for _k in enabled strat_cats all_combos auto_apply cron_schedule auto_update_time auto_update_days dns_proto dns_server vpn_section only_strat_update disable_updates include_zm_domains custom_strategy follow_enabled follow_from; do
                     _v=$(json_val "$input" "$_k")
                     uci -q set "forkop_zapret.cfg_${slug}.${_k}=${_v}"
                 done

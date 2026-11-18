@@ -18,9 +18,26 @@ SPEED_LIMIT_JS=5000
 SPEED_TIME_JS=2
 
 NETNS="fzcheck"
-NETNS_IP="192.168.2.250"
-LAN_IF="br-lan"
-LAN_GW="192.168.2.1"
+LAN_IF=$(uci -q get network.lan.device 2>/dev/null)
+[ -z "$LAN_IF" ] && LAN_IF="br-lan"
+LAN_CIDR=$(ip -4 addr show dev "$LAN_IF" 2>/dev/null | awk '/inet /{print $2; exit}')
+if [ -n "$LAN_CIDR" ]; then
+    LAN_GW="${LAN_CIDR%/*}"
+    LAN_PREFIX="${LAN_CIDR#*/}"
+else
+    LAN_GW=$(uci -q get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
+    [ -z "$LAN_GW" ] && LAN_GW="192.168.1.1"
+    LAN_PREFIX=$(uci -q get network.lan.netmask 2>/dev/null)
+    case "$LAN_PREFIX" in
+        255.255.255.0) LAN_PREFIX=24 ;;
+        255.255.0.0) LAN_PREFIX=16 ;;
+        *) LAN_PREFIX=24 ;;
+    esac
+fi
+BASE="${LAN_GW%.*}"
+NETNS_IP="${BASE}.250"
+[ "$NETNS_IP" = "$LAN_GW" ] && NETNS_IP="${BASE}.251"
+ping -c1 -W1 "$NETNS_IP" >/dev/null 2>&1 && NETNS_IP="${BASE}.252"
 
 mkdir -p "$WORK"
 
@@ -137,7 +154,7 @@ setup_netns() {
     ip link set fzchk1 master "$LAN_IF" up
     ip netns exec "$NETNS" ip link set lo up
     ip netns exec "$NETNS" ip link set fzchk0 up
-    ip netns exec "$NETNS" ip addr add "${NETNS_IP}/24" dev fzchk0
+    ip netns exec "$NETNS" ip addr add "${NETNS_IP}/${LAN_PREFIX}" dev fzchk0
     ip netns exec "$NETNS" ip route add default via "$LAN_GW"
     return 0
 }

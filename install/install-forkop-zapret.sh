@@ -11,6 +11,37 @@ echo "=================================================="
 
 rm -f /tmp/forkop-zapret-install-addon
 
+ADDON_INSTALLED=0
+if [ -f /etc/config/forkop_zapret ] && [ -d /usr/libexec/forkop-zapret ]; then
+    ADDON_INSTALLED=1
+fi
+if [ "$ADDON_INSTALLED" = "1" ]; then
+    echo ""
+    echo "Обнаружен установленный аддон forkop+zapret."
+    echo "  1) Обновить аддон (настройки сохраняются)"
+    echo "  2) Полная переустановка"
+    printf "Выбор (1/2, по умолчанию 1): "
+    if [ "${ASSUME_YES:-0}" = "1" ]; then
+        ans="1"
+    elif [ -r /dev/tty ]; then
+        read ans < /dev/tty || ans=""
+    else
+        read ans || ans=""
+    fi
+    case "$ans" in
+        2|n|N|no|NO)
+            echo "[i] Полная переустановка."
+            ;;
+        *)
+            echo "[i] Обновление аддона (forkop, zapret и настройки не трогаются)..."
+            sh "$SCRIPT_DIR/install-addon.sh"
+            echo "[+] Аддон обновлён. Настройки сохранены."
+            echo "[i] Откройте LuCI и нажмите Ctrl+F5."
+            exit 0
+            ;;
+    esac
+fi
+
 echo ""
 echo "=== ЭТАП 1/2: ОЧИСТКА ==="
 if ! sh "$SCRIPT_DIR/clean-forkop.sh"; then

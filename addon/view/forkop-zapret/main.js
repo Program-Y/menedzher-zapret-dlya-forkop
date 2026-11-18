@@ -10,6 +10,7 @@ var callSaveSection = rpc.declare({
 	object: 'forkop.zapret',
 	method: 'save_section_settings',
 	params: [ 'section', 'enabled', 'strat_cats', 'all_combos', 'auto_apply', 'cron_schedule',
+		'auto_update_time', 'auto_update_days',
 		'dns_proto', 'dns_server', 'dns_servers', 'vpn_section', 'only_strat_update', 'disable_updates',
 		'include_zm_domains', 'custom_strategy', 'follow_enabled', 'follow_from' ],
 	expect: { '': {} }
@@ -26,6 +27,7 @@ var callCheckBlock = rpc.declare({ object: 'forkop.zapret', method: 'check_block
 var callCheckForkop = rpc.declare({ object: 'forkop.zapret', method: 'check_forkop', params: [ 'sections', 'domain' ], expect: { '': {} } });
 var callGetCheckLog = rpc.declare({ object: 'forkop.zapret', method: 'get_check_log', params: [ 'offset' ], expect: { '': {} } });
 var callStopCheck = rpc.declare({ object: 'forkop.zapret', method: 'stop_check', expect: { '': {} } });
+var callUpdate = rpc.declare({ object: 'forkop.zapret', method: 'update', expect: { '': {} } });
 
 var PORTS_UDP = '88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535';
 var PORTS_TCP = '2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442';
@@ -125,6 +127,8 @@ return view.extend({
 		setChk('fz-all-combos', s.all_combos === '1');
 		setChk('fz-auto-apply', s.auto_apply !== '0');
 		setVal('fz-cron-sched', s.cron_schedule || 'off');
+		setVal('fz-auto-time', s.auto_update_time || '03:00');
+		setVal('fz-auto-days', s.auto_update_days || '*');
 		setVal('fz-dns-proto', s.dns_proto || 'doh');
 		setVal('fz-dns-server', s.dns_server || '8.8.8.8');
 		setVal('fz-vpn-sec', s.vpn_section || 'none');
@@ -227,6 +231,8 @@ return view.extend({
 			all_combos: chk('fz-all-combos'),
 			auto_apply: chk('fz-auto-apply'),
 			cron_schedule: val('fz-cron-sched'),
+			auto_update_time: val('fz-auto-time') || '03:00',
+			auto_update_days: val('fz-auto-days') || '*',
 			dns_proto: firstDns[0],
 			dns_server: firstDns[1],
 			dns_servers: dnsRows.join(';'),
@@ -244,6 +250,7 @@ return view.extend({
 		var f = this.readSectionForm();
 		if (!f.section) return Promise.reject(new Error('Выберите секцию'));
 		return callSaveSection(f.section, f.enabled, f.strat_cats, f.all_combos, f.auto_apply, f.cron_schedule,
+			f.auto_update_time, f.auto_update_days,
 			f.dns_proto, f.dns_server, f.dns_servers, f.vpn_section, f.only_strat_update, f.disable_updates,
 			f.include_zm_domains, f.custom_strategy, f.follow_enabled, f.follow_from);
 	},
@@ -251,6 +258,12 @@ return view.extend({
 	handleSaveSection: function() {
 		return this.doSaveSection().then(function() {
 			ui.addNotification(null, E('p', 'Настройки секции сохранены.'), 'info');
+		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });
+	},
+	handleUpdateAddon: function() {
+		return callUpdate().then(function(res) {
+			var ok = res && res.ok;
+			ui.addNotification(null, E('p', ok ? 'Аддон обновлён. Настройки сохранены.' : ('Ошибка обновления: ' + ((res && res.error) || 'неизвестно'))), ok ? 'info' : 'error');
 		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });
 	},
 
@@ -570,9 +583,23 @@ return view.extend({
 			]);
 		});
 
+		var shortCode = function(id) {
+			var m;
+			if ((m = id.match(/^General_v(\d+)/))) return 'G' + m[1];
+			if (id === 'FakeTLS_SNIExt_679') return 'FT1';
+			if (id === 'FakeTLS_Multidisorder_MidSLD') return 'FT2';
+			if (id === 'FakeTLS_HostFake_AltOrder') return 'FT3';
+			if (id === 'Discord_Dv_MD5') return 'D0';
+			if ((m = id.match(/^Discord_Dv(\d+)/))) return 'D' + m[1];
+			if ((m = id.match(/^YouTube_Yv0*(\d+)/))) return 'YT' + m[1];
+			if ((m = id.match(/^Game_Gv(\d+)/))) return 'GV' + m[1];
+			return id;
+		};
 		var makeOpts = function(arr, curVal) {
 			return arr.map(function(item) {
-				return E('option', { 'value': item.id, 'selected': (curVal === item.id) ? 'selected' : null }, item.label);
+				var sc = shortCode(item.id);
+				var label = (sc !== item.id) ? (sc + ': ' + item.label) : item.label;
+				return E('option', { 'value': item.id, 'selected': (curVal === item.id) ? 'selected' : null }, label);
 			});
 		};
 
@@ -703,6 +730,9 @@ return view.extend({
 			E('div', { 'id': 'fz-tab-settings', 'style': 'display:none;' }, [
 				E('div', { 'class': 'cbi-section', 'style': 'padding:16px;' }, [
 					E('h3', { 'style': 'margin-top:0;' }, '1. Обновления и загрузка'),
+					E('div', { 'style': 'margin:8px 0 14px 0;' }, [
+						E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleUpdateAddon') }, '🔄 Обновить аддон (сохранить настройки)')
+					]),
 					E('div', { 'style': 'display:flex; flex-direction:column; gap:12px; margin-bottom:20px;' }, [
 						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Скачивание через VPN-секцию:'),
@@ -751,8 +781,14 @@ return view.extend({
 								E('option', { 'value': '6h', 'selected': (sel.cron_schedule === '6h') ? 'selected' : null }, 'Каждые 6 часов'),
 								E('option', { 'value': '12h', 'selected': (sel.cron_schedule === '12h') ? 'selected' : null }, 'Каждые 12 часов'),
 								E('option', { 'value': 'daily3', 'selected': (sel.cron_schedule === 'daily3') ? 'selected' : null }, 'Ежедневно 03:00'),
-								E('option', { 'value': 'daily5', 'selected': (sel.cron_schedule === 'daily5') ? 'selected' : null }, 'Ежедневно 05:00')
+								E('option', { 'value': 'daily5', 'selected': (sel.cron_schedule === 'daily5') ? 'selected' : null }, 'Ежедневно 05:00'),
+								E('option', { 'value': 'custom', 'selected': (sel.cron_schedule === 'custom') ? 'selected' : null }, 'Своё время/дни')
 							])
+						]),
+						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
+							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Своё время (ЧЧ:ММ) и дни (0=Вс..6=Сб):'),
+							E('input', { 'type': 'text', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:90px;', 'value': sel.auto_update_time || '03:00' }),
+							E('input', { 'type': 'text', 'id': 'fz-auto-days', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_days || '*' })
 						])
 					]),
 

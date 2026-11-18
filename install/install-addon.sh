@@ -31,7 +31,9 @@ cp "$ADDON/acl.d/luci-app-forkop-zapret.json" /usr/share/rpcd/acl.d/luci-app-for
 [ -f /etc/forkop_zapret.conf ] || cp "$CONFIG/forkop_zapret.conf" /etc/forkop_zapret.conf
 
 rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null
-/etc/init.d/rpcd restart 2>/dev/null || true
-/etc/init.d/uhttpd restart 2>/dev/null || true
+if [ "${FZ_ADDON_UPDATE:-0}" != "1" ]; then
+    /etc/init.d/rpcd restart 2>/dev/null || true
+    /etc/init.d/uhttpd restart 2>/dev/null || true
+fi
 
 echo "[+] Расширение установлено."

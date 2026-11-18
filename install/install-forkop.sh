@@ -215,18 +215,18 @@ cleanup_network_leftovers() {
     sed -i '/zapret-manager\|Zapret-Manager\|zmsA\|steer\|splify2\|tg-ws-proxy/d' /etc/rc.local 2>/dev/null
 
     echo "[-] Проверка nftables и сетевых настроек..."
-    for t in zapret zapret2 podkop forkop ForkopTable byedpi steer splify2 zmwarp; do
+    for t in zapret zapret2 podkop forkop ForkopTable byedpi steer splify2 zmwarp v2ray xray v2raya; do
         for fam in inet ip ip6; do
             nft delete table "$fam" "$t" 2>/dev/null
         done
     done
-    ip rule show 2>/dev/null | awk -F: '/lookup (forkop|podkop|zapret|zapret2|byedpi|steer|splify2)/ {print $1}' | while read -r prio; do
+    ip rule show 2>/dev/null | awk -F: '/lookup (forkop|podkop|zapret|zapret2|byedpi|steer|splify2|v2ray|xray)/ {print $1}' | while read -r prio; do
         [ -n "$prio" ] && ip rule del priority "$prio" 2>/dev/null
     done
     for tbl in 100 105 200 300; do
         ip route flush table "$tbl" 2>/dev/null
     done
-    rm -f /etc/nftables.d/zapret.nft /etc/nftables.d/zapret2.nft /etc/nftables.d/podkop.nft /etc/nftables.d/byedpi.nft 2>/dev/null
+    rm -f /etc/nftables.d/zapret.nft /etc/nftables.d/zapret2.nft /etc/nftables.d/podkop.nft /etc/nftables.d/byedpi.nft /etc/nftables.d/v2ray.nft /etc/nftables.d/xray.nft /etc/nftables.d/v2raya.nft 2>/dev/null
 
     if [ "$(uci -q get dhcp.@dnsmasq[0].server)" = "127.0.0.42" ]; then
         uci -q delete dhcp.@dnsmasq[0].server
@@ -252,44 +252,32 @@ cleanup_network_leftovers() {
     fi
 }
 
-# --- Замена tiny/stable на extended из файла, снятого с 192.168.2.1 (aarch64) ---
-install_extended_from_repo() {
-    echo "[-] Установка extended из репозитория (aarch64)..."
-    TMP_GZ="/tmp/sing-box-extended-repo.gz"
-    rm -f "$TMP_GZ"
-    if [ -f "$REPO_DIR/assets/sing-box-extended-aarch64.gz" ]; then
-        echo "[i] Использую локальный ассет из архива репозитория."
-        TMP_GZ="$REPO_DIR/assets/sing-box-extended-aarch64.gz"
-    else
-        REPO_EXT_URL="https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/assets/sing-box-extended-aarch64.gz"
-        if command -v curl >/dev/null 2>&1; then
-            curl -4 -fL --connect-timeout 10 --max-time 1800 --retry 2 -o "$TMP_GZ" "$REPO_EXT_URL" || return 1
-        else
-            wget -T 30 -O "$TMP_GZ" "$REPO_EXT_URL" || return 1
-        fi
+# --- Утилита расширения RAM за счёт ROM: swap-utils + swapfile 64 МБ ---
+install_ram_expander() {
+    echo "[-] Установка утилиты расширения RAM (swap-utils + swapfile 64 МБ)..."
+    opkg install swap-utils 2>/dev/null || true
+    if [ -f /swapfile ]; then
+        echo "[i] swapfile уже существует — включаю."
+        swapon /swapfile 2>/dev/null || true
+        return 0
     fi
-    [ -s "$TMP_GZ" ] || return 1
-
-    /etc/init.d/sing-box stop 2>/dev/null
-    /etc/init.d/forkop stop 2>/dev/null
-    killall sing-box 2>/dev/null
-    echo "[i] Удаляю старый sing-box и распаковываю extended..."
-    rm -f /usr/bin/sing-box
-    gzip -dc "$TMP_GZ" > /usr/bin/sing-box 2>/dev/null || { rm -f /usr/bin/sing-box; return 1; }
-    chmod +x /usr/bin/sing-box
-    if ! /usr/bin/sing-box version >/dev/null 2>&1; then
-        echo "[!] extended не запускается — удаляю; переустановите версию через Forkop."
-        rm -f /usr/bin/sing-box
+    FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ "${FREE_KB:-0}" -lt 102400 ]; then
+        echo "[!] Мало места для swapfile 64 МБ (нужно ~100 МБ свободно)."
+        echo "    swap-utils установлен, swapfile не создан."
         return 1
     fi
-    mkdir -p /etc/forkop
-    echo "extended" > /etc/forkop/sing-box-variant
-    VER=$(/usr/bin/sing-box version 2>/dev/null | head -n1 | awk '{print $NF}')
-    [ -n "$VER" ] && echo "$VER" > /etc/forkop/sing-box-version
-    if [ "$TMP_GZ" = "/tmp/sing-box-extended-repo.gz" ]; then
-        rm -f "$TMP_GZ"
+    dd if=/dev/zero of=/swapfile bs=1M count=64 2>/dev/null || return 1
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null 2>&1 || { rm -f /swapfile; return 1; }
+    swapon /swapfile 2>/dev/null || return 1
+    if [ -f /etc/rc.local ]; then
+        grep -q '/swapfile' /etc/rc.local || sed -i '/^exit 0/i [ -f /swapfile ] \&\& swapon /swapfile 2>/dev/null' /etc/rc.local
+    else
+        echo '[ -f /swapfile ] && swapon /swapfile 2>/dev/null' > /etc/rc.local
+        chmod +x /etc/rc.local
     fi
-    echo "[+] extended из репозитория установлен: $VER"
+    echo "[+] swapfile 64 МБ создан и включён."
     return 0
 }
 
@@ -423,6 +411,13 @@ rm -rf /etc/forkop/backup /etc/forkop/backup-* /etc/forkop/*.backup
 rm -rf /tmp/forkop-sing-box* /tmp/sing-box-backup*
 opkg clean 2>/dev/null
 
+echo "[-] Удаление остатков v2ray/xray..."
+opkg remove --force-depends v2ray-core xray-core v2raya luci-app-v2raya 2>/dev/null
+rm -rf /etc/v2ray /usr/bin/v2ray /usr/share/v2ray /etc/config/v2ray /etc/init.d/v2ray
+rm -rf /etc/xray /usr/bin/xray /usr/share/xray /etc/config/xray /etc/init.d/xray
+rm -rf /etc/v2raya /usr/bin/v2raya /etc/config/v2raya /etc/init.d/v2raya
+rm -f /etc/nftables.d/v2ray.nft /etc/nftables.d/xray.nft /etc/nftables.d/v2raya.nft
+
 cleanup_network_leftovers
 echo "[+] Система очищена."
 fi
@@ -534,9 +529,10 @@ while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
         echo "  1) tiny"
         echo "  2) stable"
         echo "  3) extended"
+        echo "  4) extended compressed"
         echo "  0) не устанавливать"
         echo "$ASK_SEP"
-        printf "Версия (1/2/3/0, по умолчанию 3 extended): "
+        printf "Версия (1/2/3/4/0, по умолчанию 3 extended): "
         if [ -r /dev/tty ]; then
             read -r sb_choice < /dev/tty
         else
@@ -547,6 +543,7 @@ while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
             1) SB_ACTION="install_tiny" ;;
             2) SB_ACTION="install_stable" ;;
             3|"") SB_ACTION="install_extended" ;;
+            4) SB_ACTION="install_extended_compressed" ;;
             *) echo "[!] Неверный выбор — используется extended."; SB_ACTION="install_extended" ;;
         esac
     fi
@@ -565,6 +562,9 @@ while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
     if forkop_component sing_box "$SB_ACTION" "Установка sing-box ($SB_ACTION, Forkop)"; then
         SB_INSTALLED=1
         DID_INSTALL_SINGBOX=1
+        if [ "$SB_ACTION" = "install_extended_compressed" ]; then
+            install_ram_expander || echo "[!] Утилита расширения RAM не настроена."
+        fi
     else
         echo "[!] sing-box не установился."
         echo "[i] Если мало места: rm -rf /usr/libexec/sing-box-core /root/sing-box-install /tmp/sing-box-install; opkg clean"
@@ -575,25 +575,6 @@ while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
         echo "[i] Попробуйте другую версию или выберите 0 (не устанавливать)."
     fi
 done
-
-if [ "$SB_INSTALLED" = "1" ]; then
-    case "$SB_ACTION" in
-        install_tiny|install_stable)
-            case "$ARCH" in
-                aarch64*)
-                    if ask_yes_d "Заменить $SB_ACTION на extended (файл с 192.168.2.1)?" "Будет скачан extended-бинарник (aarch64), который сейчас установлен на 192.168.2.1, и заменит текущий sing-box. Версия и маркеры Forkop обновятся."; then
-                        if ! install_extended_from_repo; then
-                            echo "[!] Не удалось заменить на extended — остаётся $SB_ACTION."
-                        fi
-                    fi
-                    ;;
-                *)
-                    echo "[i] Для $ARCH загруженного extended-файла нет — остаётся $SB_ACTION."
-                    ;;
-            esac
-            ;;
-    esac
-fi
 
 # 5.2 — zapret через Forkop, затем (только при успехе) аддон zapret+forkop
 if ask_yes_d "Установить Zapret (DPI-обход) через Forkop?" "Будет установлен компонент Zapret через Forkop: nfqws, правила nftables и fake-файлы."; then

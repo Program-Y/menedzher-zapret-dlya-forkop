@@ -36,6 +36,21 @@ PORTS_UDP="88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535"
 PORTS_TCP="2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442"
 PARALLEL_CURL=6
 
+short_strategy_name() {
+    case "$1" in
+        General_v*) echo "G$(echo "${1#General_v}" | sed 's/_.*//')" ;;
+        FakeTLS_SNIExt_679) echo "FT1" ;;
+        FakeTLS_Multidisorder_MidSLD) echo "FT2" ;;
+        FakeTLS_HostFake_AltOrder) echo "FT3" ;;
+        FakeTLS_*) echo "FT" ;;
+        Discord_Dv) echo "D0" ;;
+        Discord_Dv*) echo "D$(echo "${1#Discord_Dv}" | sed 's/_.*//')" ;;
+        YouTube_Yv*) echo "YT$(echo "${1#YouTube_Yv}" | sed 's/^0*//' | sed 's/_.*//')" ;;
+        Game_Gv*) echo "GV$(echo "${1#Game_Gv}" | sed 's/_.*//')" ;;
+        *) echo "$1" ;;
+    esac
+}
+
 # Скоростные пороги curl (единые константы — легко тюнить)
 SPEED_LIMIT_PAGE=3000
 SPEED_TIME_PAGE=2
@@ -1227,6 +1242,14 @@ run_main() {
         /etc/init.d/dnsmasq reload >/dev/null 2>&1
         log_ux 96 "COPY_HEAD" "📋 АВТОПОДСТАНОВКА ВЫКЛЮЧЕНА — СТРАТЕГИЯ:"
         log_ux 98 "COPY_BOX" "$GLOBAL_BEST_BODY"
+    fi
+
+    if [ -s "$RESULTS_FILE" ]; then
+        log_ux 99 "STATS" "═══ СТАТИСТИКА ПО ПРОВЕРЕННЫМ СТРАТЕГИЯМ ═══"
+        sort -t'|' -k1,1nr -k2,2nr "$RESULTS_FILE" 2>/dev/null | while IFS='|' read -r _a _b _c _d; do
+            [ -n "$_c" ] && log_ux 99 "STATS" "  $(short_strategy_name "$_c") — секции $_a/$SEC_COUNT, всего $_b/$DOM_COUNT"
+        done
+        log_ux 99 "STATS" "🏆 Лучшая: $(short_strategy_name "$GLOBAL_BEST_NAME") ($GLOBAL_BEST_NAME)"
     fi
 
     log_ux 100 "BEST" "═══ ТЕСТИРОВАНИЕ ЗАВЕРШЕНО ═══"
