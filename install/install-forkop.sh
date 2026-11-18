@@ -247,6 +247,43 @@ cleanup_network_leftovers() {
     fi
 }
 
+# --- Замена tiny/stable на extended из файла, снятого с 192.168.2.1 (aarch64) ---
+install_extended_from_repo() {
+    echo "[-] Установка extended из репозитория (aarch64)..."
+    REPO_EXT_URL="https://raw.githubusercontent.com/Program-Y/menedzher-zapret-dlya-forkop/main/assets/sing-box-extended-aarch64.gz"
+    TMP_GZ="/tmp/sing-box-extended-repo.gz"
+    TMP_BIN="/tmp/sing-box-extended-repo"
+    rm -f "$TMP_GZ" "$TMP_BIN"
+    if command -v curl >/dev/null 2>&1; then
+        curl -4 -fL --connect-timeout 10 --max-time 1800 --retry 2 -o "$TMP_GZ" "$REPO_EXT_URL" || return 1
+    else
+        wget -T 30 -O "$TMP_GZ" "$REPO_EXT_URL" || return 1
+    fi
+    [ -s "$TMP_GZ" ] || return 1
+    gzip -dc "$TMP_GZ" > "$TMP_BIN" 2>/dev/null || return 1
+    [ -s "$TMP_BIN" ] || return 1
+
+    /etc/init.d/sing-box stop 2>/dev/null
+    /etc/init.d/forkop stop 2>/dev/null
+    killall sing-box 2>/dev/null
+    cp /usr/bin/sing-box /tmp/sing-box.prev 2>/dev/null
+    cp "$TMP_BIN" /usr/bin/sing-box || { rm -f "$TMP_GZ" "$TMP_BIN"; return 1; }
+    chmod +x /usr/bin/sing-box
+    if ! /usr/bin/sing-box version >/dev/null 2>&1; then
+        echo "[!] extended не запускается — возвращаю прежний бинарник."
+        [ -f /tmp/sing-box.prev ] && cp /tmp/sing-box.prev /usr/bin/sing-box
+        rm -f "$TMP_GZ" "$TMP_BIN" /tmp/sing-box.prev
+        return 1
+    fi
+    mkdir -p /etc/forkop
+    echo "extended" > /etc/forkop/sing-box-variant
+    VER=$(/usr/bin/sing-box version 2>/dev/null | head -n1 | awk '{print $NF}')
+    [ -n "$VER" ] && echo "$VER" > /etc/forkop/sing-box-version
+    rm -f "$TMP_GZ" "$TMP_BIN" /tmp/sing-box.prev
+    echo "[+] extended из репозитория установлен: $VER"
+    return 0
+}
+
 # ==================================================
 # ЭТАП 0: ПРОВЕРКА ЦЕЛОСТНОСТИ СИСТЕМНЫХ ФАЙЛОВ
 # ==================================================
@@ -453,35 +490,42 @@ if [ ! -f /etc/init.d/forkop ]; then
 fi
 echo "[+] Forkop успешно установлен."
 
-# 5.1 — выбор версии sing-box (установка только средствами Forkop)
-SB_ACTION=""
-if [ "$ASSUME_YES" = "1" ]; then
-    SB_ACTION="install_extended"
-    echo "[i] ASSUME_YES: выбран sing-box extended."
-else
-    echo ""
-    echo "$ASK_SEP"
-    echo "Выберите версию sing-box (установка через Forkop):"
-    echo "  1) tiny"
-    echo "  2) stable"
-    echo "  3) extended"
-    echo "  0) не устанавливать"
-    echo "$ASK_SEP"
-    printf "Версия (1/2/3/0, по умолчанию 3 extended): "
-    if [ -r /dev/tty ]; then
-        read -r sb_choice < /dev/tty
+# 5.1 — выбор версии sing-box (только через Forkop); без успеха не продолжаем
+SB_INSTALLED=0
+SB_SKIPPED=0
+while [ "$SB_INSTALLED" = "0" ] && [ "$SB_SKIPPED" = "0" ]; do
+    SB_ACTION=""
+    if [ "$ASSUME_YES" = "1" ]; then
+        SB_ACTION="install_extended"
+        echo "[i] ASSUME_YES: выбран sing-box extended."
     else
-        read -r sb_choice
+        echo ""
+        echo "$ASK_SEP"
+        echo "Выберите версию sing-box (установка через Forkop):"
+        echo "  1) tiny"
+        echo "  2) stable"
+        echo "  3) extended"
+        echo "  0) не устанавливать"
+        echo "$ASK_SEP"
+        printf "Версия (1/2/3/0, по умолчанию 3 extended): "
+        if [ -r /dev/tty ]; then
+            read -r sb_choice < /dev/tty
+        else
+            read -r sb_choice
+        fi
+        case "$sb_choice" in
+            0) SB_ACTION="" ;;
+            1) SB_ACTION="install_tiny" ;;
+            2) SB_ACTION="install_stable" ;;
+            3|"") SB_ACTION="install_extended" ;;
+            *) echo "[!] Неверный выбор — используется extended."; SB_ACTION="install_extended" ;;
+        esac
     fi
-    case "$sb_choice" in
-        0) SB_ACTION="" ;;
-        1) SB_ACTION="install_tiny" ;;
-        2) SB_ACTION="install_stable" ;;
-        3|"") SB_ACTION="install_extended" ;;
-        *) echo "[!] Неверный выбор — используется extended."; SB_ACTION="install_extended" ;;
-    esac
-fi
-if [ -n "$SB_ACTION" ]; then
+    if [ -z "$SB_ACTION" ]; then
+        SB_SKIPPED=1
+        echo "[i] sing-box не устанавливается (явный отказ)."
+        break
+    fi
     if [ "$SB_ACTION" = "install_extended" ]; then
         FREE_KB=$(df -k /overlay 2>/dev/null | awk 'NR==2 {print $4}')
         if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 120000 ]; then
@@ -490,12 +534,35 @@ if [ -n "$SB_ACTION" ]; then
         fi
     fi
     if forkop_component sing_box "$SB_ACTION" "Установка sing-box ($SB_ACTION, Forkop)"; then
+        SB_INSTALLED=1
         DID_INSTALL_SINGBOX=1
     else
-        echo "[!] sing-box не установился. Проверьте: logread -e forkop / forkop get_sing_box_status"
+        echo "[!] sing-box не установился."
+        if [ "$ASSUME_YES" = "1" ]; then
+            echo "[x] Установка sing-box не удалась — остановка (ASSUME_YES)."
+            exit 1
+        fi
+        echo "[i] Попробуйте другую версию или выберите 0 (не устанавливать)."
     fi
-else
-    echo "[i] sing-box не устанавливается."
+done
+
+if [ "$SB_INSTALLED" = "1" ]; then
+    case "$SB_ACTION" in
+        install_tiny|install_stable)
+            case "$ARCH" in
+                aarch64*)
+                    if ask_yes_d "Заменить $SB_ACTION на extended (файл с 192.168.2.1)?" "Будет скачан extended-бинарник (aarch64), который сейчас установлен на 192.168.2.1, и заменит текущий sing-box. Версия и маркеры Forkop обновятся."; then
+                        if ! install_extended_from_repo; then
+                            echo "[!] Не удалось заменить на extended — остаётся $SB_ACTION."
+                        fi
+                    fi
+                    ;;
+                *)
+                    echo "[i] Для $ARCH загруженного extended-файла нет — остаётся $SB_ACTION."
+                    ;;
+            esac
+            ;;
+    esac
 fi
 
 # 5.2 — zapret через Forkop, затем (только при успехе) аддон zapret+forkop
