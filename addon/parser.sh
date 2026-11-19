@@ -246,10 +246,13 @@ list_sections() {
         s=$(_fz_clean "$s")
         [ -z "$s" ] && continue
 
-        local ctype lists d_cnt is_z
+        local ctype lists d_cnt is_z label
         ctype=$(uci -q get "${PKG_NAME}.${s}.connection_type" 2>/dev/null | tr -d '\r\t"')
         [ -z "$ctype" ] && ctype=$(uci -q get "${PKG_NAME}.${s}.action" 2>/dev/null | tr -d '\r\t"')
         lists=$(uci -q get "${PKG_NAME}.${s}.community_lists" 2>/dev/null | tr -d '\r\t"')
+        label=$(uci -q get "${PKG_NAME}.${s}.label" 2>/dev/null | tr -d '\r\n')
+        [ -z "$label" ] && label="$s"
+        label=$(printf '%s' "$label" | sed 's/\\/\\\\/g; s/"/\\"/g')
         d_cnt=$(get_section_domains "$s" 2>/dev/null | wc -l | tr -d ' \r\t')
         [ -z "$d_cnt" ] && d_cnt=0
         is_z="false"
@@ -262,8 +265,8 @@ list_sections() {
         fi
 
         [ "$first" -eq 0 ] && printf ','
-        printf '{"id":"%s","type":"%s","is_zapret":%s,"lists":"%s"}' \
-            "$s" "${ctype:-unknown}" "$is_z" "$lists"
+        printf '{"id":"%s","type":"%s","label":"%s","is_zapret":%s,"lists":"%s"}' \
+            "$s" "${ctype:-unknown}" "$label" "$is_z" "$lists"
         first=0
     done
     printf ']}\n'

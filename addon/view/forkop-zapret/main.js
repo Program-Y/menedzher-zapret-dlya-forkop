@@ -216,7 +216,7 @@ return view.extend({
 				fs.appendChild(E('option', { value: '' }, '— нет других zapret-секций —'));
 			} else {
 				opts.forEach(function(x) {
-					fs.appendChild(E('option', { value: x.id, selected: (s.follow_from === x.id) ? 'selected' : null }, x.id));
+					fs.appendChild(E('option', { value: x.id, selected: (s.follow_from === x.id) ? 'selected' : null }, x.label ? (x.label + ' (' + x.id + ')') : x.id));
 				});
 			}
 		}
@@ -659,8 +659,8 @@ return view.extend({
 	checkSectionsChanged: function() {
 		var self = this;
 		return callGetSections().then(function(res) {
-			var ids = (res.sections || []).map(function(s) { return s.id + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
-			var cur = self.sectionList().map(function(s) { return s.id + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
+			var ids = (res.sections || []).map(function(s) { return s.id + ':' + (s.label || '') + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
+			var cur = self.sectionList().map(function(s) { return s.id + ':' + (s.label || '') + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
 			if (ids !== cur) window.location.reload();
 		}).catch(function() {});
 	},
@@ -676,7 +676,7 @@ return view.extend({
 		var secSelect = E('select', { id: 'fz-sec-select', 'class': 'cbi-input-select', 'style': 'width:320px;', 'change': function(ev) { self.selectSection(ev.target.value); } },
 			this.sectionList().map(function(s) {
 				return E('option', { 'value': s.id, 'selected': (s.id === self.selectedSection) ? 'selected' : null },
-					(s.is_zapret ? '⚡ ' : '🛡️ ') + s.id + ' (' + (s.type || '?') + ')');
+					(s.is_zapret ? '⚡ ' : '🛡️ ') + (s.label || s.id) + ' (' + s.id + ', ' + (s.type || '?') + ')');
 			})
 		);
 
@@ -684,7 +684,7 @@ return view.extend({
 		if (!followOpts.length) followOpts = [{ id: '' }];
 		var followSelect = E('select', { id: 'fz-follow-from', 'class': 'cbi-input-select', 'style': 'width:240px;', 'change': function() { self.doSaveSection().catch(function() {}); } },
 			followOpts.map(function(x) {
-				return E('option', { 'value': x.id, 'selected': (sel.follow_from === x.id) ? 'selected' : null }, x.id || '— нет других zapret-секций —');
+				return E('option', { 'value': x.id, 'selected': (sel.follow_from === x.id) ? 'selected' : null }, x.id ? (x.label ? (x.label + ' (' + x.id + ')') : x.id) : '— нет других zapret-секций —');
 			})
 		);
 
@@ -728,7 +728,7 @@ return view.extend({
 		var chkSections = this.sectionList().map(function(s) {
 			return E('label', { 'style': 'display:inline-flex; align-items:center; gap:8px; padding:8px 12px; margin:4px; background:#1f2937; border:1px solid ' + (s.is_zapret ? '#10b981' : '#4b5563') + '; border-radius:6px; cursor:pointer;' }, [
 				E('input', { 'type': 'checkbox', 'class': 'fz-chk-sec-cb', 'value': s.id, 'checked': s.is_zapret ? 'checked' : null }),
-				E('span', { 'style': 'font-weight:600; color:#f9fafb;' }, s.id),
+				E('span', { 'style': 'font-weight:600; color:#f9fafb;' }, s.label ? (s.label + ' (' + s.id + ')') : s.id),
 				E('span', { 'style': 'font-size:11px; color:' + (s.is_zapret ? '#34d399' : '#9ca3af') + ';' }, s.is_zapret ? '⚡ ZAPRET' : '🛡️ VPN/DNS')
 			]);
 		});
@@ -861,7 +861,7 @@ return view.extend({
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Скачивание через VPN-секцию:'),
 							E('select', { 'id': 'fz-vpn-sec', 'class': 'cbi-input-select', 'style': 'width:320px;' }, (function() {
 								var opts = [E('option', { 'value': 'none' }, 'Напрямую')];
-								self.sectionList().forEach(function(s) { if (!s.is_zapret) opts.push(E('option', { 'value': s.id, 'selected': (sel.vpn_section === s.id) ? 'selected' : null }, 'VPN-секция: ' + s.id)); });
+								self.sectionList().forEach(function(s) { if (!s.is_zapret) opts.push(E('option', { 'value': s.id, 'selected': (sel.vpn_section === s.id) ? 'selected' : null }, 'VPN-секция: ' + (s.label || s.id) + ' (' + s.id + ')')); });
 								return opts;
 							})())
 						]),
