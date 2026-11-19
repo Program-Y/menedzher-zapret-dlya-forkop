@@ -26,6 +26,13 @@ cp "$ADDON/view/forkop-zapret/main.js" /www/luci-static/resources/view/forkop-za
 cp "$ADDON/menu.d/luci-app-forkop-zapret.json" /usr/share/luci/menu.d/luci-app-forkop-zapret.json
 cp "$ADDON/acl.d/luci-app-forkop-zapret.json" /usr/share/rpcd/acl.d/luci-app-forkop-zapret.json
 
+# Права: uhttpd должен читать view, а rpcd — исполнять обработчик.
+chmod 755 /www/luci-static/resources/view/forkop-zapret
+chmod 644 /www/luci-static/resources/view/forkop-zapret/main.js
+chmod 644 /usr/share/luci/menu.d/luci-app-forkop-zapret.json /usr/share/rpcd/acl.d/luci-app-forkop-zapret.json
+chmod +x /usr/libexec/forkop-zapret/runner.sh /usr/libexec/forkop-zapret/parser.sh /usr/libexec/forkop-zapret/check.sh
+chmod +x /usr/libexec/rpcd/forkop.zapret
+
 # Конфиги расширения — только если ещё нет (не перетираем пользовательские)
 [ -f /etc/config/forkop_zapret ] || cp "$CONFIG/forkop_zapret" /etc/config/forkop_zapret
 [ -f /etc/forkop_zapret.conf ] || cp "$CONFIG/forkop_zapret.conf" /etc/forkop_zapret.conf
