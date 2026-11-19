@@ -926,17 +926,14 @@ return view.extend({
 								E('span', { 'style': 'font-weight:500;' }, 'Время:'),
 								E('input', { 'type': 'time', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_time || '03:00', 'change': function() { self.saveAutoSettings(); } })
 							]),
-							E('div', { 'style': 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;' }, [
-								E('span', { 'style': 'font-weight:500;' }, 'Дни:'),
-								[['1','Пн'],['2','Вт'],['3','Ср'],['4','Чт'],['5','Пт'],['6','Сб'],['0','Вс']].map(function(d) {
-									var _d = (sel.auto_update_days || '*').split(',');
-									var on = _d.indexOf('*') !== -1 || _d.indexOf(d[0]) !== -1;
-									return E('label', { 'style': 'display:inline-flex; align-items:center; gap:5px; cursor:pointer;' }, [
-										E('input', { 'type': 'checkbox', 'class': 'fz-day-cb', 'value': d[0], 'checked': on ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
-										E('span', {}, d[1])
-									]);
-								})
-							])
+							E('div', { 'style': 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;' }, [E('span', { 'style': 'font-weight:500;' }, 'Дни:')].concat([['1','Пн'],['2','Вт'],['3','Ср'],['4','Чт'],['5','Пт'],['6','Сб'],['0','Вс']].map(function(d) {
+								var _d = (sel.auto_update_days || '*').split(',');
+								var on = _d.indexOf('*') !== -1 || _d.indexOf(d[0]) !== -1;
+								return E('label', { 'style': 'display:inline-flex; align-items:center; gap:5px; cursor:pointer;' }, [
+									E('input', { 'type': 'checkbox', 'class': 'fz-day-cb', 'value': d[0], 'checked': on ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
+									E('span', {}, d[1])
+								]);
+							})))
 						])
 					]),
 
