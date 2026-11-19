@@ -28,6 +28,7 @@ var callCheckForkop = rpc.declare({ object: 'forkop.zapret', method: 'check_fork
 var callGetCheckLog = rpc.declare({ object: 'forkop.zapret', method: 'get_check_log', params: [ 'offset' ], expect: { '': {} } });
 var callStopCheck = rpc.declare({ object: 'forkop.zapret', method: 'stop_check', expect: { '': {} } });
 var callUpdate = rpc.declare({ object: 'forkop.zapret', method: 'update', expect: { '': {} } });
+var callGetUpdateLog = rpc.declare({ object: 'forkop.zapret', method: 'get_update_log', params: [ 'offset' ], expect: { '': {} } });
 
 var PORTS_UDP = '88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535';
 var PORTS_TCP = '2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442';
@@ -265,10 +266,34 @@ return view.extend({
 		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });
 	},
 	handleUpdateAddon: function() {
+		var self = this;
+		var con = document.getElementById('fz-update-console');
+		if (con) { con.style.display = 'block'; con.textContent = ''; }
+		if (this.updatePoll) clearInterval(this.updatePoll);
+		this.updateLogOffset = 0;
+		this.updatePoll = setInterval(function() {
+			callGetUpdateLog(self.updateLogOffset).then(function(r) {
+				if (!r) return;
+				if (r.log_chunk && con) { con.textContent += r.log_chunk; con.scrollTop = con.scrollHeight; }
+				if (typeof r.next_offset === 'number') self.updateLogOffset = r.next_offset;
+				if (r.log_chunk && r.log_chunk.indexOf('Обновление завершено') !== -1) {
+					clearInterval(self.updatePoll);
+					ui.addNotification(null, E('p', 'Аддон обновлён. Настройки сохранены.'), 'info');
+				} else if (r.log_chunk && r.log_chunk.indexOf('Ошибка') !== -1) {
+					clearInterval(self.updatePoll);
+					ui.addNotification(null, E('p', 'Обновление завершилось с ошибкой (см. консоль).'), 'error');
+				}
+			});
+		}, 700);
 		return callUpdate().then(function(res) {
-			var ok = res && res.ok;
-			ui.addNotification(null, E('p', ok ? 'Аддон обновлён. Настройки сохранены.' : ('Ошибка обновления: ' + ((res && res.error) || 'неизвестно'))), ok ? 'info' : 'error');
-		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });
+			if (!res || !res.ok) {
+				clearInterval(self.updatePoll);
+				ui.addNotification(null, E('p', 'Ошибка запуска обновления: ' + ((res && res.error) || 'неизвестно')), 'error');
+			}
+		}).catch(function(err) {
+			clearInterval(self.updatePoll);
+			ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error');
+		});
 	},
 
 	getCheckSections: function() {
@@ -737,6 +762,7 @@ return view.extend({
 					E('div', { 'style': 'margin:8px 0 14px 0;' }, [
 						E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleUpdateAddon') }, '🔄 Обновить аддон (сохранить настройки)')
 					]),
+					E('pre', { 'id': 'fz-update-console', 'style': 'display:none; background:#0f172a; color:#94a3b8; padding:12px; border-radius:8px; max-height:260px; overflow:auto; font-family:monospace; font-size:11px; margin:0 0 14px 0; white-space:pre-wrap;' }, ''),
 					E('div', { 'style': 'display:flex; flex-direction:column; gap:12px; margin-bottom:20px;' }, [
 						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Скачивание через VPN-секцию:'),

@@ -5,6 +5,7 @@ PARSER="/usr/libexec/forkop-zapret/parser.sh"
 RUNNER="/usr/libexec/forkop-zapret/runner.sh"
 CHECK="/usr/libexec/forkop-zapret/check.sh"
 LOG_FILE="/tmp/forkop_zapret/live.log"
+UPDATE_LOG="/tmp/forkop_zapret/update.log"
 RES_FILE="/tmp/forkop_zapret/results.txt"
 CONF_FILE="/etc/forkop_zapret.conf"
 
@@ -138,26 +139,39 @@ build_section_json() {
 }
 
 do_update() {
-    local tmp="/tmp/forkop-zapret-update"
-    local url="https://codeload.github.com/Program-Y/menedzher-zapret-dlya-forkop/tar.gz/refs/heads/main"
-    rm -rf "$tmp"; mkdir -p "$tmp"
-    if command -v wget >/dev/null 2>&1; then
-        wget -q -O "$tmp/repo.tar.gz" "$url" 2>/dev/null || { echo '{"ok":false,"error":"download"}'; return; }
-    else
-        curl -fsSL -o "$tmp/repo.tar.gz" "$url" 2>/dev/null || { echo '{"ok":false,"error":"download"}'; return; }
-    fi
-    tar -xzf "$tmp/repo.tar.gz" -C "$tmp" 2>/dev/null || { echo '{"ok":false,"error":"extract"}'; return; }
-    local dir=$(find "$tmp" -maxdepth 1 -type d -name 'menedzher-*' | head -n1)
-    [ -z "$dir" ] && { echo '{"ok":false,"error":"no dir"}'; return; }
-    FZ_ADDON_UPDATE=1 sh "$dir/install/install-addon.sh" >/tmp/forkop-zapret-update.log 2>&1
-    local rc=$?
-    rm -rf "$tmp"
-    ( sleep 2; /etc/init.d/rpcd restart; /etc/init.d/uhttpd restart ) >/dev/null 2>&1 &
-    if [ "$rc" -eq 0 ]; then
-        echo '{"ok":true}'
-    else
-        echo '{"ok":false,"error":"install failed"}'
-    fi
+    mkdir -p /tmp/forkop_zapret
+    : > "$UPDATE_LOG"
+    cat > /tmp/forkop-zapret-update-run.sh <<'EOS'
+#!/bin/sh
+UPDATE_LOG="/tmp/forkop_zapret/update.log"
+LOG_TMP="/tmp/forkop-zapret-update"
+URL="https://codeload.github.com/Program-Y/menedzher-zapret-dlya-forkop/tar.gz/refs/heads/main"
+log_update() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$1" >> "$UPDATE_LOG"; }
+mkdir -p /tmp/forkop_zapret
+log_update "Скачивание архива репозитория..."
+rm -rf "$LOG_TMP"; mkdir -p "$LOG_TMP"
+if command -v wget >/dev/null 2>&1; then
+    wget -O "$LOG_TMP/repo.tar.gz" "$URL" >> "$UPDATE_LOG" 2>&1 || { log_update "Ошибка скачивания"; exit 1; }
+else
+    curl -fL --progress-bar -o "$LOG_TMP/repo.tar.gz" "$URL" >> "$UPDATE_LOG" 2>&1 || { log_update "Ошибка скачивания"; exit 1; }
+fi
+log_update "Архив скачан ($(wc -c < "$LOG_TMP/repo.tar.gz" 2>/dev/null) байт)."
+log_update "Распаковка архива..."
+tar -xzf "$LOG_TMP/repo.tar.gz" -C "$LOG_TMP" >> "$UPDATE_LOG" 2>&1 || { log_update "Ошибка распаковки"; exit 1; }
+DIR=$(find "$LOG_TMP" -maxdepth 1 -type d -name 'menedzher-*' | head -n1)
+[ -z "$DIR" ] && { log_update "Каталог репозитория не найден"; exit 1; }
+log_update "Замена файлов аддона (runner.sh, parser.sh, check.sh, rpcd, main.js, menu/acl)..."
+FZ_ADDON_UPDATE=1 sh "$DIR/install/install-addon.sh" >> "$UPDATE_LOG" 2>&1
+RC=$?
+if [ "$RC" -eq 0 ]; then log_update "Файлы аддона заменены."; else log_update "Ошибка замены файлов (код $RC)."; fi
+rm -rf "$LOG_TMP"
+log_update "Обновление завершено."
+rm -f /tmp/forkop-zapret-update-run.sh
+( sleep 2; /etc/init.d/rpcd restart; /etc/init.d/uhttpd restart ) >/dev/null 2>&1 &
+EOS
+    chmod +x /tmp/forkop-zapret-update-run.sh
+    setsid /bin/sh /tmp/forkop-zapret-update-run.sh >> "$UPDATE_LOG" 2>&1 &
+    echo '{"ok":true,"started":true}'
 }
 
 case "$1" in
@@ -188,6 +202,7 @@ case "$1" in
             "check_forkop": { "sections": "str", "domain": "str" },
             "get_check_log": { "offset": 0 },
             "stop_check": {},
+            "get_update_log": { "offset": 0 },
             "update": {},
             "apply_custom": {
                 "sections": "str", "name": "str", "strategy": "str", "builder_state": "str"
@@ -198,6 +213,27 @@ case "$1" in
         case "$2" in
             update)
                 do_update
+                ;;
+            get_update_log)
+                read -r input
+                offset=0
+                case "$input" in *offset*) offset=$(echo "$input" | sed -E 's/.*"offset"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/') ;; esac
+                [ -z "$offset" ] && offset=0
+                total_lines=0
+                new_text=""
+                if [ -f "$UPDATE_LOG" ]; then
+                    total_lines=$(wc -l < "$UPDATE_LOG" | tr -d ' ')
+                    if [ "$total_lines" -gt "$offset" ]; then
+                        new_text=$(sed -n "$((offset + 1)),${total_lines}p" "$UPDATE_LOG" | awk '{
+                            gsub(/\\/, "\\\\");
+                            gsub(/"/, "\\\"");
+                            gsub(/\r/, "");
+                            printf "%s\\n", $0;
+                        }')
+                    fi
+                fi
+                new_text=$(printf '%s' "$new_text" | sed 's/\\n$//')
+                echo "{\"next_offset\":$total_lines,\"log_chunk\":\"$new_text\"}"
                 ;;
             get_state)
                 . "$CONF_FILE" 2>/dev/null
