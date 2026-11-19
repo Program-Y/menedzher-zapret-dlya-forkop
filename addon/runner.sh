@@ -1199,6 +1199,15 @@ run_main() {
         fi
     fi
 
+    local single_best_sec="$GLOBAL_BEST_SEC"
+    local single_best_tot="$GLOBAL_BEST_TOT"
+    local single_best_name="$GLOBAL_BEST_NAME"
+    local single_best_body="$GLOBAL_BEST_BODY"
+    local combo_best_sec=0
+    local combo_best_tot=0
+    local combo_best_name=""
+    local combo_best_body=""
+
     local combo_total=$(grep -c '^#' "$STR_FILE" 2>/dev/null)
     local combo_cur=0; local s_name=""; local s_body=""
     while IFS= read -r line || [ -n "$line" ]; do
@@ -1223,13 +1232,39 @@ run_main() {
                     log_ux "$pct" "RESULT" "◼ КОМБО [$s_name] ➔ Домены: $s_ok/$SEC_COUNT ($diff_ctrl)"
                 fi
                 printf "%d|%d|%s|%s\n" "$s_ok" "$tot_ok" "$s_name" "$s_body" >> "$RESULTS_FILE"
-                if [ "$s_ok" -gt "$GLOBAL_BEST_SEC" ] || { [ "$s_ok" -eq "$GLOBAL_BEST_SEC" ] && [ "$tot_ok" -gt "$GLOBAL_BEST_TOT" ]; }; then
-                    GLOBAL_BEST_SEC="$s_ok"; GLOBAL_BEST_TOT="$tot_ok"
-                    GLOBAL_BEST_NAME="$s_name"; GLOBAL_BEST_BODY="$s_body"
+                if [ "$s_ok" -gt "$combo_best_sec" ] || { [ "$s_ok" -eq "$combo_best_sec" ] && [ "$tot_ok" -gt "$combo_best_tot" ]; }; then
+                    combo_best_sec="$s_ok"; combo_best_tot="$tot_ok"
+                    combo_best_name="$s_name"; combo_best_body="$s_body"
                 fi
                 ;;
         esac
     done < "$STR_FILE"
+
+    # Комбинация приоритетнее одиночной при равенстве; перед применением — финальная проверка.
+    local final_name="$single_best_name"
+    local final_body="$single_best_body"
+    local final_sec="$single_best_sec"
+    local final_tot="$single_best_tot"
+    if [ -n "$combo_best_name" ] && { [ "$combo_best_sec" -gt "$single_best_sec" ] || [ "$combo_best_sec" -eq "$single_best_sec" ]; }; then
+        log_ux 96 "STAGE" "═══ ФИНАЛЬНАЯ ПРОВЕРКА КОМБИНАЦИИ [$combo_best_name] ═══"
+        setup_isolated_channel "$combo_best_body"
+        local vpair=$(evaluate_domains_split "$SEC_DOMAINS" "$ZM_DOMAINS" 96)
+        cleanup_sandbox
+        local v_ok=$(echo "$vpair" | cut -d: -f1)
+        local v_zm=$(echo "$vpair" | cut -d: -f2)
+        local v_tot=$((v_ok + v_zm))
+        if [ "$v_ok" -ge "$combo_best_sec" ]; then
+            final_name="$combo_best_name"; final_body="$combo_best_body"
+            final_sec="$v_ok"; final_tot="$v_tot"
+            log_ux 97 "BEST" "✓ Комбинация подтверждена: секции $v_ok/$SEC_COUNT, всего $v_tot/$DOM_COUNT"
+        else
+            log_ux 97 "WARN" "Комбинация просела ($v_ok/$SEC_COUNT) — применяю одиночную [$single_best_name]"
+        fi
+    fi
+    GLOBAL_BEST_NAME="$final_name"
+    GLOBAL_BEST_BODY="$final_body"
+    GLOBAL_BEST_SEC="$final_sec"
+    GLOBAL_BEST_TOT="$final_tot"
 
     if [ "$GLOBAL_BEST_TOT" -le 0 ] || [ -z "$GLOBAL_BEST_NAME" ]; then
         log_ux 100 "ERR" "Подбор завершён: ни одна стратегия не дала результата."
