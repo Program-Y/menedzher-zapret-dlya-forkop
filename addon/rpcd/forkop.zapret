@@ -392,9 +392,15 @@ EOF
                 acomb=$(json_val "$input" "all_combos")
                 inczm=$(json_val "$input" "include_zm_domains")
                 if [ -n "$sec" ]; then
+                    _slug=$(section_slug "$sec")
+                    uci -q get "forkop_zapret.cfg_${_slug}" >/dev/null 2>&1 || uci -q set "forkop_zapret.cfg_${_slug}=section_settings"
+                    uci -q set "forkop_zapret.cfg_${_slug}.section_name=$sec"
+                    [ -n "$scats" ] && uci -q set "forkop_zapret.cfg_${_slug}.strat_cats=$scats"
+                    [ -n "$acomb" ] && uci -q set "forkop_zapret.cfg_${_slug}.all_combos=$acomb"
+                    [ -n "$inczm" ] && uci -q set "forkop_zapret.cfg_${_slug}.include_zm_domains=$inczm"
+                    uci -q commit forkop_zapret
                     run_secs="$sec"
                     if [ -z "$auto" ]; then
-                        _slug=$(section_slug "$sec")
                         auto=$(uci -q get "forkop_zapret.cfg_${_slug}.auto_apply" 2>/dev/null)
                     fi
                 else
