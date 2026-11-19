@@ -1321,6 +1321,11 @@ case "$1" in
         rm -f "$LOCK_FILE"
         log_ux 100 "WARN" "🛑 Тестирование остановлено. Процессы и песочница очищены."
         ;;
+    --list-strategies)
+        load_settings "${2:-}"
+        prepare_categorized_strategies
+        exit 0
+        ;;
     --apply-custom)
         load_settings "$2"
         update_fake_bins

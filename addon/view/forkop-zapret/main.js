@@ -29,6 +29,7 @@ var callGetCheckLog = rpc.declare({ object: 'forkop.zapret', method: 'get_check_
 var callStopCheck = rpc.declare({ object: 'forkop.zapret', method: 'stop_check', expect: { '': {} } });
 var callUpdate = rpc.declare({ object: 'forkop.zapret', method: 'update', expect: { '': {} } });
 var callGetUpdateLog = rpc.declare({ object: 'forkop.zapret', method: 'get_update_log', params: [ 'offset' ], expect: { '': {} } });
+var callGetStrategies = rpc.declare({ object: 'forkop.zapret', method: 'get_strategies', params: [ 'refresh' ], expect: { '': {} } });
 
 var PORTS_UDP = '88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535';
 var PORTS_TCP = '2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442';
@@ -117,6 +118,31 @@ var GAME_PRESETS = [
 	{ id: 'Game_Gv4_Cutoff_n4', label: 'Gv4: Cutoff n4', udp: '--filter-udp=' + PORTS_UDP + ' --dpi-desync=fake --dpi-desync-repeats=10 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --dpi-desync-cutoff=n4' },
 	{ id: 'off', label: 'Отключено', udp: '' }
 ];
+
+var shortCode = function(id) {
+	var m;
+	if ((m = id.match(/^General_v(\d+)/))) return 'G' + m[1];
+	if (id === 'FakeTLS_SNIExt_679') return 'FT1';
+	if (id === 'FakeTLS_Multidisorder_MidSLD') return 'FT2';
+	if (id === 'FakeTLS_HostFake_AltOrder') return 'FT3';
+	if (id === 'FakeTLS_Google_MD5') return 'FT4';
+	if (id === 'FakeTLS_Multisplit_Badseq1000') return 'FT5';
+	if (id === 'FakeTLS_FakedSplit_Badseq2') return 'FT6';
+	if (id === 'FakeTLS_Multisplit_Badseq10M') return 'FT7';
+	if (id === 'FakeTLS_Pattern00_MD5') return 'FT8';
+	if (id === 'Discord_Dv_MD5') return 'D0';
+	if ((m = id.match(/^Discord_Dv(\d+)/))) return 'D' + m[1];
+	if ((m = id.match(/^YouTube_Yv0*(\d+)/))) return 'YT' + m[1];
+	if ((m = id.match(/^Game_Gv(\d+)/))) return 'GV' + m[1];
+	return id;
+};
+var makeOpts = function(arr, curVal) {
+	return arr.map(function(item) {
+		var sc = shortCode(item.id);
+		var label = (sc !== item.id) ? (sc + ': ' + item.label) : item.label;
+		return E('option', { 'value': item.id, 'selected': (curVal === item.id) ? 'selected' : null }, label);
+	});
+};
 
 return view.extend({
 	logOffset: 0,
@@ -301,6 +327,37 @@ return view.extend({
 		return this.doSaveSection().then(function() {
 			ui.addNotification(null, E('p', 'Настройки секции сохранены.'), 'info');
 		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });
+	},
+	handleRefreshStrategies: function() {
+		var self = this;
+		return callGetStrategies('1').then(function(res) {
+			var gen = (res.general || []).map(function(x) { return { id: x.id, label: x.id, args443: x.body, args80: (x.body || '').replace('--filter-tcp=443', '--filter-tcp=80,443') }; });
+			var ft = (res.faketls || []).map(function(x) { return { id: x.id, label: x.id, args443: x.body, args80: (x.body || '').replace('--filter-tcp=443', '--filter-tcp=80,443') }; });
+			CORE_PRESETS = gen.concat(ft);
+			YT_PRESETS = [{ id: 'same', label: 'Использовать выбранное основное ядро TCP 443', args: '' }].concat((res.youtube || []).map(function(x) { return { id: x.id, label: x.id, args: x.body }; }));
+			DISC_TCP_PRESETS = (res.discord || []).map(function(x) { return { id: x.id, label: x.id, args: x.body }; });
+			GAME_PRESETS = (res.gv || []).map(function(x) { return { id: x.id, label: x.id, udp: x.body }; }).concat([{ id: 'off', label: 'Отключено', udp: '' }]);
+			self.refillBuilder();
+			self.updateBuilderPreview();
+			ui.addNotification(null, E('p', 'Стратегии обновлены: General ' + gen.length + ', FakeTLS ' + ft.length + ', YouTube ' + (res.youtube || []).length + ', Discord ' + (res.discord || []).length + ', Game ' + (res.gv || []).length), 'info');
+		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка обновления стратегий: ' + err.message), 'error'); });
+	},
+	refillBuilder: function() {
+		var fill = function(id, arr, cur) {
+			var el = document.getElementById(id);
+			if (!el) return;
+			var keep = el.value || cur;
+			while (el.firstChild) el.removeChild(el.firstChild);
+			arr.forEach(function(item) {
+				var sc = shortCode(item.id);
+				var label = (sc !== item.id) ? (sc + ': ' + item.label) : item.label;
+				el.appendChild(E('option', { 'value': item.id, 'selected': (item.id === keep) ? 'selected' : null }, label));
+			});
+		};
+		fill('fz-bld-core', CORE_PRESETS, 'General_v11_Forkop_OneTrust');
+		fill('fz-bld-yt', YT_PRESETS, 'same');
+		fill('fz-bld-disctcp', DISC_TCP_PRESETS, 'Discord_Dv_MD5');
+		fill('fz-bld-game', GAME_PRESETS, 'Game_Gv1_Cutoff_d2');
 	},
 	handleUpdateAddon: function() {
 		var self = this;
@@ -649,31 +706,6 @@ return view.extend({
 			]);
 		});
 
-		var shortCode = function(id) {
-			var m;
-			if ((m = id.match(/^General_v(\d+)/))) return 'G' + m[1];
-			if (id === 'FakeTLS_SNIExt_679') return 'FT1';
-			if (id === 'FakeTLS_Multidisorder_MidSLD') return 'FT2';
-			if (id === 'FakeTLS_HostFake_AltOrder') return 'FT3';
-			if (id === 'FakeTLS_Google_MD5') return 'FT4';
-			if (id === 'FakeTLS_Multisplit_Badseq1000') return 'FT5';
-			if (id === 'FakeTLS_FakedSplit_Badseq2') return 'FT6';
-			if (id === 'FakeTLS_Multisplit_Badseq10M') return 'FT7';
-			if (id === 'FakeTLS_Pattern00_MD5') return 'FT8';
-			if (id === 'Discord_Dv_MD5') return 'D0';
-			if ((m = id.match(/^Discord_Dv(\d+)/))) return 'D' + m[1];
-			if ((m = id.match(/^YouTube_Yv0*(\d+)/))) return 'YT' + m[1];
-			if ((m = id.match(/^Game_Gv(\d+)/))) return 'GV' + m[1];
-			return id;
-		};
-		var makeOpts = function(arr, curVal) {
-			return arr.map(function(item) {
-				var sc = shortCode(item.id);
-				var label = (sc !== item.id) ? (sc + ': ' + item.label) : item.label;
-				return E('option', { 'value': item.id, 'selected': (curVal === item.id) ? 'selected' : null }, label);
-			});
-		};
-
 		var ss = (state.section_strategies || {})[this.selectedSection] || {};
 		var bestName = ss.best_strategy || state.best_strategy || '';
 
@@ -744,7 +776,10 @@ return view.extend({
 			// === Вкладка 2: Ручной конструктор ===
 			E('div', { 'id': 'fz-tab-builder', 'style': 'display:none;' }, [
 				E('div', { 'class': 'cbi-section', 'style': 'padding:16px;' }, [
-					E('h3', { 'style': 'margin-top:0;' }, '🛠️ Ручной конструктор стратегии'),
+					E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;' }, [
+						E('h3', { 'style': 'margin:0;' }, '🛠️ Ручной конструктор стратегии'),
+						E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleRefreshStrategies') }, '🔄 Обновить стратегии')
+					]),
 					E('p', { 'style': 'margin:0 0 12px 0; font-size:12px; color:#9ca3af;' }, 'Собранная стратегия применяется в выбранную выше секцию.'),
 					E('div', { 'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:16px; margin-bottom:18px;' }, [
 						E('div', {}, [E('label', { 'style': 'display:block; font-weight:bold; margin-bottom:6px;' }, '1. Основное ядро:'), E('select', { 'id': 'fz-bld-core', 'class': 'cbi-input-select', 'style': 'width:100%;', 'change': function() { self.updateBuilderPreview(); } }, makeOpts(CORE_PRESETS, 'General_v11_Forkop_OneTrust'))]),

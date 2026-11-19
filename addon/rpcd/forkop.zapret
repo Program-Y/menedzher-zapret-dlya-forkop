@@ -6,6 +6,11 @@ RUNNER="/usr/libexec/forkop-zapret/runner.sh"
 CHECK="/usr/libexec/forkop-zapret/check.sh"
 LOG_FILE="/tmp/forkop_zapret/live.log"
 UPDATE_LOG="/tmp/forkop_zapret/update.log"
+CAT_GENERAL="/tmp/forkop_zapret/cat_general.txt"
+CAT_FAKETLS="/tmp/forkop_zapret/cat_faketls.txt"
+CAT_YOUTUBE="/tmp/forkop_zapret/cat_youtube.txt"
+CAT_DISCORD="/tmp/forkop_zapret/cat_discord.txt"
+CAT_GV="/tmp/forkop_zapret/cat_gv.txt"
 RES_FILE="/tmp/forkop_zapret/results.txt"
 CONF_FILE="/etc/forkop_zapret.conf"
 
@@ -203,6 +208,7 @@ case "$1" in
             "get_check_log": { "offset": 0 },
             "stop_check": {},
             "get_update_log": { "offset": 0 },
+            "get_strategies": { "refresh": "str" },
             "update": {},
             "apply_custom": {
                 "sections": "str", "name": "str", "strategy": "str", "builder_state": "str"
@@ -213,6 +219,28 @@ case "$1" in
         case "$2" in
             update)
                 do_update
+                ;;
+            get_strategies)
+                read -r input
+                ref=$(json_val "$input" "refresh")
+                _busy=0
+                if [ -f "/tmp/forkop_zapret/runner.lock" ] && kill -0 "$(cat "/tmp/forkop_zapret/runner.lock" 2>/dev/null)" 2>/dev/null; then
+                    _busy=1
+                fi
+                if [ "$ref" = "1" ] && [ "$_busy" = "0" ]; then
+                    /bin/sh "$RUNNER" --list-strategies "" >/dev/null 2>&1
+                fi
+                group_json() {
+                    local file="$1" out="" name body
+                    [ -f "$file" ] || { echo "[]"; return; }
+                    while IFS='|' read -r name body; do
+                        [ -z "$name" ] && continue
+                        name=$(jesc "$name"); body=$(jesc "$body")
+                        out="${out:+$out,}{\"id\":\"$name\",\"body\":\"$body\"}"
+                    done < "$file"
+                    echo "[$out]"
+                }
+                echo "{\"general\":$(group_json "$CAT_GENERAL"),\"faketls\":$(group_json "$CAT_FAKETLS"),\"youtube\":$(group_json "$CAT_YOUTUBE"),\"discord\":$(group_json "$CAT_DISCORD"),\"gv\":$(group_json "$CAT_GV")}"
                 ;;
             get_update_log)
                 read -r input
