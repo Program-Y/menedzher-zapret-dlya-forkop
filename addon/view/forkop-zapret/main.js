@@ -132,6 +132,7 @@ var shortCode = function(id) {
 	if (id === 'FakeTLS_Pattern00_MD5') return 'FT8';
 	if (id === 'Discord_Dv_MD5') return 'D0';
 	if ((m = id.match(/^Discord_Dv(\d+)/))) return 'D' + m[1];
+	if ((m = id.match(/^YouTube_gVideo(\d+)/))) return 'VID' + m[1];
 	if ((m = id.match(/^YouTube_Yv0*(\d+)/))) return 'YT' + m[1];
 	if ((m = id.match(/^Game_Gv(\d+)/))) return 'GV' + m[1];
 	return id;

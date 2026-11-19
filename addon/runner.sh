@@ -31,6 +31,9 @@ NFQWS_BIN="/opt/zapret/nfq/nfqws"
 GH_MAIN="https://github.com"
 GH_RAW="https://raw.githubusercontent.com"
 STR_YT_URL="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/StrYoutube"
+STR_V_URL="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/StrV"
+STR_DISCORD_URL="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/StrDiscord"
+STR_GVIDEO_URL="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/StrGVideo"
 
 PORTS_UDP="88,1024-2407,2409-4499,4502-19293,19345-49999,50101-65535"
 PORTS_TCP="2802,2302,2502,3478-3480,3724,6000-8000,8085,8090,8100,8903,8904,25565,27015-27030,27036-27037,35500-35600,50001,60442"
@@ -50,6 +53,7 @@ short_strategy_name() {
         FakeTLS_*) echo "FT" ;;
         Discord_Dv) echo "D0" ;;
         Discord_Dv*) echo "D$(echo "${1#Discord_Dv}" | sed 's/_.*//')" ;;
+        YouTube_gVideo*) echo "VID$(echo "${1#YouTube_gVideo}" | sed 's/_.*//')" ;;
         YouTube_Yv*) echo "YT$(echo "${1#YouTube_Yv}" | sed 's/^0*//' | sed 's/_.*//')" ;;
         Game_Gv*) echo "GV$(echo "${1#Game_Gv}" | sed 's/_.*//')" ;;
         *) echo "$1" ;;
@@ -761,6 +765,33 @@ assemble_combo_strategy() {
     echo "$dudp --new $dtcp --new $main_443 --new $c80_443 --new $gv" | sed 's/[[:space:]]\+/ /g'
 }
 
+fetch_strategy_file() {
+    local url="$1" prefix="$2" out="$3"
+    local tmp="$WORK_DIR/str_$(basename "$url").txt"
+    fetch_url_to_file "$url" "$tmp" || return 1
+    : > "$out"
+    local name="" body=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(echo "$line" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -z "$line" ] && continue
+        case "$line" in
+            \#*)
+                if [ -n "$name" ] && [ -n "$body" ]; then
+                    echo "${prefix}${name#\#}|$(sanitize_os_params "$body")" >> "$out"
+                fi
+                name="$line"; body=""
+                ;;
+            --hostlist=*|--ipset=*) continue ;;
+            --*) body="${body:+$body }$line" ;;
+        esac
+    done < "$tmp"
+    if [ -n "$name" ] && [ -n "$body" ]; then
+        echo "${prefix}${name#\#}|$(sanitize_os_params "$body")" >> "$out"
+    fi
+    rm -f "$tmp"
+    return 0
+}
+
 prepare_categorized_strategies() {
     : > "$CAT_GENERAL"; : > "$CAT_FAKETLS"; : > "$CAT_YOUTUBE"; : > "$CAT_DISCORD"; : > "$CAT_GV"
     log_ux 11 "STAGE" "═══ ЭТАП 1: Подготовка категорий ($STRAT_CATS) ═══"
@@ -780,6 +811,7 @@ General_v10_FakeSplit2_MaxCDN|--filter-tcp=443 --dpi-desync=fake,split2 --dpi-de
 General_v11_Forkop_OneTrust|--filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=664 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/stun2.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_onetrust_com.bin
 EOF
 
+    local v11_line=$(grep '^General_v11_' "$CAT_GENERAL" 2>/dev/null)
     cat << 'EOF' >> "$CAT_FAKETLS"
 FakeTLS_Google_MD5|--filter-tcp=443 --dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=md5sig --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls-mod=none
 FakeTLS_Multisplit_Badseq1000|--filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-repeats=6 --dpi-desync-fooling=badseq --dpi-desync-badseq-increment=1000 --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
@@ -797,33 +829,6 @@ YouTube_Yv02_SNIExt|--filter-tcp=443 --dpi-desync=fake,multisplit --dpi-desync-s
 YouTube_Yv08_HostFake|--filter-tcp=443 --dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=google.com --dpi-desync-fooling=md5sig
 EOF
 
-    if [ "$DISABLE_UPDATES" != "1" ]; then
-        log_ux 12 "INFO" "Обновление YouTube стратегий (StrYoutube)..."
-        local yt_list="$WORK_DIR/str_youtube.txt"
-        if fetch_url_to_file "$STR_YT_URL" "$yt_list"; then
-            : > "$CAT_YOUTUBE"
-            local y_name="" y_body=""
-            while IFS= read -r line || [ -n "$line" ]; do
-                line=$(echo "$line" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-                [ -z "$line" ] && continue
-                case "$line" in
-                    \#*)
-                        if [ -n "$y_name" ] && [ -n "$y_body" ]; then
-                            echo "YouTube_${y_name#\#}|$(sanitize_os_params "$y_body")" >> "$CAT_YOUTUBE"
-                        fi
-                        y_name="$line"; y_body=""
-                        ;;
-                    --hostlist=*|--ipset=*) continue ;;
-                    --*) y_body="${y_body:+$y_body }$line" ;;
-                esac
-            done < "$yt_list"
-            if [ -n "$y_name" ] && [ -n "$y_body" ]; then
-                echo "YouTube_${y_name#\#}|$(sanitize_os_params "$y_body")" >> "$CAT_YOUTUBE"
-            fi
-            rm -f "$yt_list"
-        fi
-    fi
-
     cat << 'EOF' >> "$CAT_DISCORD"
 Discord_Dv_MD5|--filter-tcp=2053,2083,2087,2096,8443 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=681 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig --dpi-desync-repeats=8 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin --dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
 Discord_Dv1_Split652|--filter-tcp=2053,2083,2087,2096,8443 --dpi-desync=multisplit --dpi-desync-split-seqovl=652 --dpi-desync-split-pos=2 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin
@@ -839,6 +844,25 @@ Game_Gv2_Cutoff_n2|--filter-udp=$PORTS_UDP --dpi-desync=fake --dpi-desync-repeat
 Game_Gv3_Cutoff_n3|--filter-udp=$PORTS_UDP --dpi-desync=fake --dpi-desync-repeats=10 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --dpi-desync-cutoff=n3 --new --filter-tcp=$PORTS_TCP --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n5 --dpi-desync=multisplit --dpi-desync-split-seqovl=582 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin
 Game_Gv4_Cutoff_n4|--filter-udp=$PORTS_UDP --dpi-desync=fake --dpi-desync-repeats=10 --dpi-desync-any-protocol=1 --dpi-desync-fake-unknown-udp=/opt/zapret/files/fake/stun.bin --dpi-desync-cutoff=n4 --new --filter-tcp=$PORTS_TCP --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n5 --dpi-desync=multisplit --dpi-desync-split-seqovl=582 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/stun.bin
 EOF
+    if [ "$DISABLE_UPDATES" != "1" ]; then
+        log_ux 12 "INFO" "Обновление стратегий (General/Discord/YouTube/Video)..."
+        local tmp_str="$WORK_DIR/str_tmp.txt"
+        if fetch_strategy_file "$STR_YT_URL" "YouTube_" "$tmp_str"; then
+            cp "$tmp_str" "$CAT_YOUTUBE"
+        fi
+        if fetch_strategy_file "$STR_GVIDEO_URL" "YouTube_" "$tmp_str"; then
+            cat "$tmp_str" >> "$CAT_YOUTUBE"
+        fi
+        if fetch_strategy_file "$STR_V_URL" "General_" "$tmp_str"; then
+            cp "$tmp_str" "$CAT_GENERAL"
+            [ -n "$v11_line" ] && ! grep -q '^General_v11_' "$CAT_GENERAL" && echo "$v11_line" >> "$CAT_GENERAL"
+        fi
+        if fetch_strategy_file "$STR_DISCORD_URL" "Discord_" "$tmp_str"; then
+            cp "$tmp_str" "$CAT_DISCORD"
+        fi
+        rm -f "$tmp_str"
+    fi
+
 }
 
 run_baseline_control_test() {
