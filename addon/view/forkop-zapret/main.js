@@ -5,6 +5,7 @@
 'require poll';
 
 var callGetState = rpc.declare({ object: 'forkop.zapret', method: 'get_state', expect: { '': {} } });
+var callGetSections = rpc.declare({ object: 'forkop.zapret', method: 'get_sections', expect: { '': {} } });
 var callGetLog = rpc.declare({ object: 'forkop.zapret', method: 'get_log', params: [ 'offset' ], expect: { '': {} } });
 var callSaveSection = rpc.declare({
 	object: 'forkop.zapret',
@@ -651,6 +652,19 @@ return view.extend({
 		});
 	},
 
+	handleRefreshSections: function() {
+		window.location.reload();
+	},
+
+	checkSectionsChanged: function() {
+		var self = this;
+		return callGetSections().then(function(res) {
+			var ids = (res.sections || []).map(function(s) { return s.id + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
+			var cur = self.sectionList().map(function(s) { return s.id + ':' + (s.is_zapret ? 1 : 0); }).sort().join(',');
+			if (ids !== cur) window.location.reload();
+		}).catch(function() {});
+	},
+
 	render: function(state) {
 		var self = this;
 		this.state = state;
@@ -686,7 +700,8 @@ return view.extend({
 			E('div', { 'style': 'display:flex; align-items:center; gap:10px; flex-wrap:wrap;' }, [
 				E('span', { 'style': 'font-weight:bold;' }, 'Секция:'),
 				secSelect,
-				E('span', { 'id': 'fz-sec-role', 'style': 'font-size:12px; color:#9ca3af;' }, sec.is_zapret ? '⚡ zapret-секция (стратегии применяются)' : '🛡️ не zapret (только домены/маршрут)')
+				E('span', { 'id': 'fz-sec-role', 'style': 'font-size:12px; color:#9ca3af;' }, sec.is_zapret ? '⚡ zapret-секция (стратегии применяются)' : '🛡️ не zapret (только домены/маршрут)'),
+				E('button', { 'class': 'btn cbi-button cbi-button-action', 'style': 'padding:4px 10px; font-size:12px;', 'title': 'Обновить список секций из Forkop', 'click': ui.createHandlerFn(this, 'handleRefreshSections') }, '🔄 Обновить секции')
 			]),
 			followBox,
 			E('div', { 'id': 'fz-follow-note', 'style': 'display:none; margin-top:10px; padding:10px 14px; background:rgba(59,130,246,0.12); border-left:4px solid #3b82f6; color:#93c5fd; font-size:13px;' }, 'Режим «Применять настройки из секции»: стратегия для выбранной выше секции будет взята из секции-источника при сохранении и при каждом изменении её стратегии.')
@@ -914,6 +929,13 @@ return view.extend({
 		setTimeout(function() { self.updateBuilderPreview(); self.toggleFollowMode(); }, 100);
 		this.startPolling();
 		this.startCheckPolling();
+		if (!this._sectionsWatch) {
+			this._sectionsWatch = true;
+			document.addEventListener('visibilitychange', function() {
+				if (document.visibilityState === 'visible') self.checkSectionsChanged();
+			});
+			window.addEventListener('focus', function() { self.checkSectionsChanged(); });
+		}
 		return viewNode;
 	},
 

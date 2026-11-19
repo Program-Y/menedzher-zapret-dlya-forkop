@@ -183,6 +183,7 @@ case "$1" in
     list)
         echo '{
             "get_state": {},
+            "get_sections": {},
             "get_log": { "offset": 0 },
             "save_settings": {
                 "sections": "str", "strat_cats": "str", "all_combos": "str",
@@ -262,6 +263,9 @@ case "$1" in
                 fi
                 new_text=$(printf '%s' "$new_text" | sed 's/\\n$//')
                 echo "{\"next_offset\":$total_lines,\"log_chunk\":\"$new_text\"}"
+                ;;
+            get_sections)
+                /bin/sh "$PARSER" --list-sections
                 ;;
             get_state)
                 . "$CONF_FILE" 2>/dev/null
