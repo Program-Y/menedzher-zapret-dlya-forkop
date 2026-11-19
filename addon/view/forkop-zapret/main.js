@@ -15,7 +15,7 @@ var callSaveSection = rpc.declare({
 		'include_zm_domains', 'custom_strategy', 'follow_enabled', 'follow_from' ],
 	expect: { '': {} }
 });
-var callStartTest = rpc.declare({ object: 'forkop.zapret', method: 'start_test', params: [ 'section', 'auto_apply' ], expect: { '': {} } });
+var callStartTest = rpc.declare({ object: 'forkop.zapret', method: 'start_test', params: [ 'section', 'auto_apply', 'strat_cats', 'all_combos', 'include_zm_domains' ], expect: { '': {} } });
 var callStopTest = rpc.declare({ object: 'forkop.zapret', method: 'stop_test', expect: { '': {} } });
 var callApplyCustom = rpc.declare({
 	object: 'forkop.zapret',
@@ -510,7 +510,7 @@ return view.extend({
 			return new Promise(function(resolve) {
 				setTimeout(function() {
 					if (startBtn) startBtn.textContent = '▶ Запустить подбор';
-					resolve(callStartTest(f.section, f.auto_apply));
+					resolve(callStartTest(f.section, f.auto_apply, f.strat_cats, f.all_combos, f.include_zm_domains));
 				}, 800);
 			});
 		}).catch(function(err) { ui.addNotification(null, E('p', 'Ошибка: ' + err.message), 'error'); });

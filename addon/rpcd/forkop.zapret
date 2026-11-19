@@ -352,6 +352,9 @@ EOF
                 read -r input
                 sec=$(json_val "$input" "section")
                 auto=$(json_val "$input" "auto_apply")
+                scats=$(json_val "$input" "strat_cats")
+                acomb=$(json_val "$input" "all_combos")
+                inczm=$(json_val "$input" "include_zm_domains")
                 if [ -n "$sec" ]; then
                     run_secs="$sec"
                     if [ -z "$auto" ]; then
@@ -360,9 +363,6 @@ EOF
                     fi
                 else
                     secs=$(json_val "$input" "sections")
-                    scats=$(json_val "$input" "strat_cats")
-                    acomb=$(json_val "$input" "all_combos")
-                    inczm=$(json_val "$input" "include_zm_domains")
                     . "$CONF_FILE" 2>/dev/null
                     cat > "$CONF_FILE" <<EOF
 SECTIONS="${secs:-$SECTIONS}"
@@ -386,7 +386,7 @@ EOF
 
                 if [ -n "$run_secs" ]; then
                     : > "$LOG_FILE"
-                    setsid /bin/sh "$RUNNER" --run "${run_secs}" "${auto:-1}" 0 </dev/null >/dev/null 2>&1 &
+                    setsid env FZ_STRAT_CATS="$scats" FZ_ALL_COMBOS="$acomb" FZ_INCLUDE_ZM="$inczm" /bin/sh "$RUNNER" --run "${run_secs}" "${auto:-1}" 0 </dev/null >/dev/null 2>&1 &
                     echo '{"started":true}'
                 else
                     echo '{"started":false}'

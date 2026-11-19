@@ -124,6 +124,11 @@ load_settings() {
         [ -z "$CUSTOM_STRATEGY" ]    && CUSTOM_STRATEGY=$(uci -q get forkop_zapret.settings.custom_strategy 2>/dev/null)
     fi
 
+    # Явные параметры запуска из UI имеют приоритет над сохранённым конфигом
+    [ -n "${FZ_STRAT_CATS:-}" ]  && STRAT_CATS="$FZ_STRAT_CATS"
+    [ -n "${FZ_ALL_COMBOS:-}" ]  && ALL_COMBOS="$FZ_ALL_COMBOS"
+    [ -n "${FZ_INCLUDE_ZM:-}" ]  && INCLUDE_ZM_DOMAINS="$FZ_INCLUDE_ZM"
+
     [ -z "$DNS_PROTO" ]          && DNS_PROTO="doh"
     [ -z "$DNS_SERVER" ]         && DNS_SERVER="1.1.1.1"
     [ -z "$DNS_SERVERS" ]        && DNS_SERVERS="${DNS_PROTO}|${DNS_SERVER}"
