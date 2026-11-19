@@ -254,6 +254,10 @@ return view.extend({
 			f.dns_proto, f.dns_server, f.dns_servers, f.vpn_section, f.only_strat_update, f.disable_updates,
 			f.include_zm_domains, f.custom_strategy, f.follow_enabled, f.follow_from);
 	},
+	saveAutoSettings: function() {
+		if (!this.selectedSection) return;
+		return this.doSaveSection().catch(function() {});
+	},
 
 	handleSaveSection: function() {
 		return this.doSaveSection().then(function() {
@@ -578,7 +582,7 @@ return view.extend({
 		var catCheckboxes = catDefs.map(function(c) {
 			var isChk = savedCats.indexOf(c.id) !== -1;
 			return E('label', { 'style': 'display:inline-flex; align-items:center; gap:6px; padding:6px 12px; margin:4px; background:#1e293b; border:1px solid #3b82f6; border-radius:6px; cursor:pointer;' }, [
-				E('input', { 'type': 'checkbox', 'id': 'fz-cat-' + c.id, 'class': 'fz-cat-cb', 'value': c.id, 'checked': isChk ? 'checked' : null }),
+				E('input', { 'type': 'checkbox', 'id': 'fz-cat-' + c.id, 'class': 'fz-cat-cb', 'value': c.id, 'checked': isChk ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
 				E('span', { 'style': 'font-weight:600; color:#e2e8f0;' }, c.label)
 			]);
 		});
@@ -643,7 +647,7 @@ return view.extend({
 					E('div', { 'style': 'display:flex; flex-wrap:wrap; align-items:center; margin-bottom:12px;' }, catCheckboxes),
 					E('div', { 'style': 'margin-bottom:16px; padding:8px 12px; background:#111827; border:1px solid #374151; border-radius:6px;' }, [
 						E('label', { 'style': 'display:inline-flex; align-items:center; gap:8px; cursor:pointer;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'fz-all-combos', 'checked': (sel.all_combos === '1') ? 'checked' : null }),
+							E('input', { 'type': 'checkbox', 'id': 'fz-all-combos', 'checked': (sel.all_combos === '1') ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
 							E('span', { 'style': 'font-weight:bold; color:#fde047;' }, '🔀 Все комбинации (медленно)')
 						])
 					]),
@@ -762,7 +766,7 @@ return view.extend({
 					E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': function() { self.addDnsRow(); } }, '+ Добавить DNS-сервер'),
 					E('div', { 'style': 'display:flex; flex-direction:column; gap:12px; margin:14px 0 20px 0;' }, [
 						E('label', { 'style': 'display:flex; align-items:center; gap:8px; cursor:pointer;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'fz-inc-zm', 'checked': (sel.include_zm_domains === '1') ? 'checked' : null }),
+							E('input', { 'type': 'checkbox', 'id': 'fz-inc-zm', 'checked': (sel.include_zm_domains === '1') ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
 							E('span', { 'style': 'font-weight:bold; color:#34d399;' }, '🌐 Включить домены ZM по умолчанию')
 						])
 					]),
@@ -770,12 +774,12 @@ return view.extend({
 					E('h3', {}, '3. Автоподстановка и период проверки'),
 					E('div', { 'style': 'display:flex; flex-direction:column; gap:12px; margin-bottom:20px;' }, [
 						E('label', { 'style': 'display:flex; align-items:center; gap:8px; cursor:pointer;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'fz-auto-apply', 'checked': (sel.auto_apply !== '0') ? 'checked' : null }),
+							E('input', { 'type': 'checkbox', 'id': 'fz-auto-apply', 'checked': (sel.auto_apply !== '0') ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
 							E('span', { 'style': 'font-weight:500;' }, 'Автоприменять лучшую стратегию')
 						]),
 						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Период проверки этой секции:'),
-							E('select', { 'id': 'fz-cron-sched', 'class': 'cbi-input-select', 'style': 'width:260px;' }, [
+							E('select', { 'id': 'fz-cron-sched', 'class': 'cbi-input-select', 'style': 'width:260px;', 'change': function() { self.saveAutoSettings(); } }, [
 								E('option', { 'value': 'off', 'selected': (sel.cron_schedule === 'off' || !sel.cron_schedule) ? 'selected' : null }, 'Выключено'),
 								E('option', { 'value': '4h', 'selected': (sel.cron_schedule === '4h') ? 'selected' : null }, 'Каждые 4 часа'),
 								E('option', { 'value': '6h', 'selected': (sel.cron_schedule === '6h') ? 'selected' : null }, 'Каждые 6 часов'),
@@ -787,8 +791,8 @@ return view.extend({
 						]),
 						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Своё время (ЧЧ:ММ) и дни (0=Вс..6=Сб):'),
-							E('input', { 'type': 'text', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:90px;', 'value': sel.auto_update_time || '03:00' }),
-							E('input', { 'type': 'text', 'id': 'fz-auto-days', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_days || '*' })
+							E('input', { 'type': 'text', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:90px;', 'value': sel.auto_update_time || '03:00', 'change': function() { self.saveAutoSettings(); } }),
+							E('input', { 'type': 'text', 'id': 'fz-auto-days', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_days || '*', 'change': function() { self.saveAutoSettings(); } })
 						])
 					]),
 
