@@ -366,7 +366,9 @@ flush_test_ips_from_forkop_sets() {
 setup_isolated_channel() {
     local strat_args="$1"
     cleanup_sandbox
-    load_settings
+    # Настройки уже загружены в run_main с конкретной секцией.
+    # Повторный load_settings без аргументов перетирал бы выбранные
+    # категории/DNS/VPN глобальными значениями (general,gv и т.п.).
     flush_test_ips_from_forkop_sets
 
     for fch in output mangle_output mangle_postrouting; do
