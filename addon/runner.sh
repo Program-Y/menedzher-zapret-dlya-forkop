@@ -42,6 +42,11 @@ short_strategy_name() {
         FakeTLS_SNIExt_679) echo "FT1" ;;
         FakeTLS_Multidisorder_MidSLD) echo "FT2" ;;
         FakeTLS_HostFake_AltOrder) echo "FT3" ;;
+        FakeTLS_Google_MD5) echo "FT4" ;;
+        FakeTLS_Multisplit_Badseq1000) echo "FT5" ;;
+        FakeTLS_FakedSplit_Badseq2) echo "FT6" ;;
+        FakeTLS_Multisplit_Badseq10M) echo "FT7" ;;
+        FakeTLS_Pattern00_MD5) echo "FT8" ;;
         FakeTLS_*) echo "FT" ;;
         Discord_Dv) echo "D0" ;;
         Discord_Dv*) echo "D$(echo "${1#Discord_Dv}" | sed 's/_.*//')" ;;
