@@ -194,7 +194,11 @@ return view.extend({
 		setChk('fz-auto-apply', s.auto_apply !== '0');
 		setVal('fz-cron-sched', s.cron_schedule || 'off');
 		setVal('fz-auto-time', s.auto_update_time || '03:00');
-		setVal('fz-auto-days', s.auto_update_days || '*');
+		var _days = (s.auto_update_days || '*').split(',');
+		document.querySelectorAll('.fz-day-cb').forEach(function(cb) {
+			cb.checked = _days.indexOf('*') !== -1 || _days.indexOf(cb.value) !== -1;
+		});
+		this.toggleCustomSchedule();
 		setVal('fz-dns-proto', s.dns_proto || 'doh');
 		setVal('fz-dns-server', s.dns_server || '8.8.8.8');
 		setVal('fz-vpn-sec', s.vpn_section || 'none');
@@ -216,7 +220,7 @@ return view.extend({
 				fs.appendChild(E('option', { value: '' }, '— нет других zapret-секций —'));
 			} else {
 				opts.forEach(function(x) {
-					fs.appendChild(E('option', { value: x.id, selected: (s.follow_from === x.id) ? 'selected' : null }, x.label ? (x.label + ' (' + x.id + ')') : x.id));
+					fs.appendChild(E('option', { value: x.id, selected: (s.follow_from === x.id) ? 'selected' : null }, (x.label || x.id) + ' (' + (x.type || '?') + ')'));
 				});
 			}
 		}
@@ -298,7 +302,11 @@ return view.extend({
 			auto_apply: chk('fz-auto-apply'),
 			cron_schedule: val('fz-cron-sched'),
 			auto_update_time: val('fz-auto-time') || '03:00',
-			auto_update_days: val('fz-auto-days') || '*',
+			auto_update_days: (function() {
+				var ds = [];
+				document.querySelectorAll('.fz-day-cb:checked').forEach(function(cb) { ds.push(cb.value); });
+				return ds.length === 7 ? '*' : (ds.length ? ds.join(',') : '*');
+			})(),
 			dns_proto: firstDns[0],
 			dns_server: firstDns[1],
 			dns_servers: dnsRows.join(';'),
@@ -323,6 +331,11 @@ return view.extend({
 	saveAutoSettings: function() {
 		if (!this.selectedSection) return;
 		return this.doSaveSection().catch(function() {});
+	},
+	toggleCustomSchedule: function() {
+		var s = document.getElementById('fz-cron-sched');
+		var box = document.getElementById('fz-custom-schedule');
+		if (box) box.style.display = (s && s.value === 'custom') ? 'flex' : 'none';
 	},
 
 	handleSaveSection: function() {
@@ -676,7 +689,7 @@ return view.extend({
 		var secSelect = E('select', { id: 'fz-sec-select', 'class': 'cbi-input-select', 'style': 'width:320px;', 'change': function(ev) { self.selectSection(ev.target.value); } },
 			this.sectionList().map(function(s) {
 				return E('option', { 'value': s.id, 'selected': (s.id === self.selectedSection) ? 'selected' : null },
-					(s.is_zapret ? '⚡ ' : '🛡️ ') + (s.label || s.id) + ' (' + s.id + ', ' + (s.type || '?') + ')');
+					(s.is_zapret ? '⚡ ' : '🛡️ ') + (s.label || s.id) + ' (' + (s.type || '?') + ')');
 			})
 		);
 
@@ -684,7 +697,7 @@ return view.extend({
 		if (!followOpts.length) followOpts = [{ id: '' }];
 		var followSelect = E('select', { id: 'fz-follow-from', 'class': 'cbi-input-select', 'style': 'width:240px;', 'change': function() { self.doSaveSection().catch(function() {}); } },
 			followOpts.map(function(x) {
-				return E('option', { 'value': x.id, 'selected': (sel.follow_from === x.id) ? 'selected' : null }, x.id ? (x.label ? (x.label + ' (' + x.id + ')') : x.id) : '— нет других zapret-секций —');
+				return E('option', { 'value': x.id, 'selected': (sel.follow_from === x.id) ? 'selected' : null }, x.id ? ((x.label || x.id) + ' (' + (x.type || '?') + ')') : '— нет других zapret-секций —');
 			})
 		);
 
@@ -728,8 +741,8 @@ return view.extend({
 		var chkSections = this.sectionList().map(function(s) {
 			return E('label', { 'style': 'display:inline-flex; align-items:center; gap:8px; padding:8px 12px; margin:4px; background:#1f2937; border:1px solid ' + (s.is_zapret ? '#10b981' : '#4b5563') + '; border-radius:6px; cursor:pointer;' }, [
 				E('input', { 'type': 'checkbox', 'class': 'fz-chk-sec-cb', 'value': s.id, 'checked': s.is_zapret ? 'checked' : null }),
-				E('span', { 'style': 'font-weight:600; color:#f9fafb;' }, s.label ? (s.label + ' (' + s.id + ')') : s.id),
-				E('span', { 'style': 'font-size:11px; color:' + (s.is_zapret ? '#34d399' : '#9ca3af') + ';' }, s.is_zapret ? '⚡ ZAPRET' : '🛡️ VPN/DNS')
+				E('span', { 'style': 'font-weight:600; color:#f9fafb;' }, s.label || s.id),
+				E('span', { 'style': 'font-size:11px; color:' + (s.is_zapret ? '#34d399' : '#9ca3af') + ';' }, s.is_zapret ? '⚡ ZAPRET' : ('🛡️ ' + (s.type || 'VPN/DNS')))
 			]);
 		});
 		var filterCb = function(id, label) {
@@ -861,7 +874,7 @@ return view.extend({
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Скачивание через VPN-секцию:'),
 							E('select', { 'id': 'fz-vpn-sec', 'class': 'cbi-input-select', 'style': 'width:320px;' }, (function() {
 								var opts = [E('option', { 'value': 'none' }, 'Напрямую')];
-								self.sectionList().forEach(function(s) { if (!s.is_zapret) opts.push(E('option', { 'value': s.id, 'selected': (sel.vpn_section === s.id) ? 'selected' : null }, 'VPN-секция: ' + (s.label || s.id) + ' (' + s.id + ')')); });
+								self.sectionList().forEach(function(s) { if (!s.is_zapret) opts.push(E('option', { 'value': s.id, 'selected': (sel.vpn_section === s.id) ? 'selected' : null }, 'VPN-секция: ' + (s.label || s.id) + ' (' + (s.type || '?') + ')')); });
 								return opts;
 							})())
 						]),
@@ -898,7 +911,7 @@ return view.extend({
 						]),
 						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
 							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Период проверки этой секции:'),
-							E('select', { 'id': 'fz-cron-sched', 'class': 'cbi-input-select', 'style': 'width:260px;', 'change': function() { self.saveAutoSettings(); } }, [
+							E('select', { 'id': 'fz-cron-sched', 'class': 'cbi-input-select', 'style': 'width:260px;', 'change': function() { self.toggleCustomSchedule(); self.saveAutoSettings(); } }, [
 								E('option', { 'value': 'off', 'selected': (sel.cron_schedule === 'off' || !sel.cron_schedule) ? 'selected' : null }, 'Выключено'),
 								E('option', { 'value': '4h', 'selected': (sel.cron_schedule === '4h') ? 'selected' : null }, 'Каждые 4 часа'),
 								E('option', { 'value': '6h', 'selected': (sel.cron_schedule === '6h') ? 'selected' : null }, 'Каждые 6 часов'),
@@ -908,10 +921,22 @@ return view.extend({
 								E('option', { 'value': 'custom', 'selected': (sel.cron_schedule === 'custom') ? 'selected' : null }, 'Своё время/дни')
 							])
 						]),
-						E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
-							E('span', { 'style': 'font-weight:500; min-width:260px;' }, 'Своё время (ЧЧ:ММ) и дни (0=Вс..6=Сб):'),
-							E('input', { 'type': 'text', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:90px;', 'value': sel.auto_update_time || '03:00', 'change': function() { self.saveAutoSettings(); } }),
-							E('input', { 'type': 'text', 'id': 'fz-auto-days', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_days || '*', 'change': function() { self.saveAutoSettings(); } })
+						E('div', { 'id': 'fz-custom-schedule', 'style': 'display:' + (sel.cron_schedule === 'custom' ? 'flex' : 'none') + '; flex-direction:column; gap:10px; margin-top:10px; padding:12px; background:rgba(59,130,246,0.08); border-left:3px solid #3b82f6; border-radius:6px;' }, [
+							E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
+								E('span', { 'style': 'font-weight:500;' }, 'Время:'),
+								E('input', { 'type': 'time', 'id': 'fz-auto-time', 'class': 'cbi-input-text', 'style': 'width:120px;', 'value': sel.auto_update_time || '03:00', 'change': function() { self.saveAutoSettings(); } })
+							]),
+							E('div', { 'style': 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;' }, [
+								E('span', { 'style': 'font-weight:500;' }, 'Дни:'),
+								[['1','Пн'],['2','Вт'],['3','Ср'],['4','Чт'],['5','Пт'],['6','Сб'],['0','Вс']].map(function(d) {
+									var _d = (sel.auto_update_days || '*').split(',');
+									var on = _d.indexOf('*') !== -1 || _d.indexOf(d[0]) !== -1;
+									return E('label', { 'style': 'display:inline-flex; align-items:center; gap:5px; cursor:pointer;' }, [
+										E('input', { 'type': 'checkbox', 'class': 'fz-day-cb', 'value': d[0], 'checked': on ? 'checked' : null, 'change': function() { self.saveAutoSettings(); } }),
+										E('span', {}, d[1])
+									]);
+								})
+							])
 						])
 					]),
 
@@ -926,7 +951,7 @@ return view.extend({
 			])
 		]);
 
-		setTimeout(function() { self.updateBuilderPreview(); self.toggleFollowMode(); }, 100);
+		setTimeout(function() { self.updateBuilderPreview(); self.toggleFollowMode(); self.toggleCustomSchedule(); }, 100);
 		this.startPolling();
 		this.startCheckPolling();
 		if (!this._sectionsWatch) {
